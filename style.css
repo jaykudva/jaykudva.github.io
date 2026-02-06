@@ -1,0 +1,207 @@
+main {
+  padding-bottom: 3em;
+  flex: 1;
+}
+
+#profile-img {
+  width:8em;
+  height:8em;
+  border-radius: 50%;
+  max-height: 100%;
+  max-width: 100%;
+  /* width: 8em; */
+  margin: 0 auto 2em;
+  display: inline;
+}
+
+.cropped1 {
+  width: 200px; /* width of container */
+  height: 200px; /* height of container */
+  object-fit: cover;
+}
+
+.cropped2 {
+  width: 200px; /* width of container */
+  height: 200px; /* height of container */
+  object-fit: cover;
+  object-position: 20% 10%; /* try 20px 10px */ 
+}
+
+@media screen and (max-width: 70em) {
+  body {
+    margin: 2em;
+  }
+}
+@media screen and (max-width: 550px) {
+  #profile-img {
+    display: block;
+  }
+}
+
+h1, h2, p {
+  font-family: 'Gelasio', serif;
+  font-weight: 500;
+}
+h1, h2, h3 {
+  font-size: 2em;
+  line-height: 1.2em;
+  margin-bottom: 1em;
+}
+h1 {
+  font-size: 2.5rem;
+}
+
+body {
+  color: #171717;
+  background-color: #f2f2f2;
+  font-size: 1.1em;
+  line-height: 1.4em;
+  max-width: 42em;
+  margin: 2em 2em 20%;
+  display: flex;
+  flex-direction: column;
+  /*height: 100vh;*/
+}
+/* how to make specific words colored in a p tag*/
+mark {
+  isolation: isolate;
+}
+
+mark.a {
+  color: #6CB2D1;
+  background: none;
+}
+.blue {
+  color: #6CB2D1;
+  /* color: #0f4c5c; */
+}
+.green {
+  /* color: #8DA290; */
+  /* color: #3a8028; */
+  /* color: #35605a; */
+  color: #2d6a4f;
+}
+.bonfire {
+  color: #ff5f42;
+}
+.yellow {
+  color: rgb(172, 126, 10);
+}
+
+.amazon {
+  color: #FF9900;
+}
+
+.blueprint {
+  color: #187BE5;
+}
+
+mark.b {
+  color: #8DA290;
+  background: none;
+
+}
+mark.c {
+  color: rgb(255, 192, 34);
+  background: none;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.legacy {
+  font-family: 'Product Sans', Arial, sans-serif;
+  text-align: center;
+}
+
+.center {
+  margin: auto;
+  width: 60%;
+  padding: 10px;
+}
+
+
+button {
+  background-color: #a5d5ff;
+  border: none;
+  color: white;
+  padding: 15px 25px;
+  text-align: center;
+  font-size: 16px;
+  cursor: pointer;
+  justify-content: center;
+  isolation: isolate;
+}
+
+.button1 {border-radius: 3px}
+
+.button:hover {
+  background-color: #51aeff;
+}
+/* top nav bar inspired entirely by @aeloyus, can be found at aeloy.us*/
+ul.flat {
+padding-top: 0.2rem;
+list-style-type: none;
+margin: 0;
+padding: 0;
+display: flex;
+}
+
+ul.straight {
+  list-style-type: square;
+  padding-top: 0.2rem;
+  margin: 0;
+  padding: 0;
+}
+
+li {
+padding-right: 1em;
+}
+
+li:hover {
+/* color: #ff906b; */
+/* background: linear-gradient(to right, rgb(18, 194, 233), rgb(196, 113, 237), rgb(246, 79, 89));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent; */
+  color: #15616d;
+isolation: isolate;
+}
+
+ul.circle {
+list-style-type: circle;
+}
+
+
+/*this was also straight up boonked from aeolyus as well, @aeloyus, aeloy.us*/
+/* Hide scrollbar */
+html { scrollbar-width: none; }
+::-webkit-scrollbar { display: none; }
+
+/* Custom highlight color */
+::selection {
+  color: #f2f2f2;
+  background: #DF9881;
+}
+
+/*a.underline {
+  text-decoration: underline;
+  -webkit-text-decoration-color: #E18728;
+  text-decoration-color: #E18728; 
+}
+
+a.underline:visited {
+  -webkit-text-decoration-color: #94530D;
+  text-decoration-color: #94530D; 
+}
+
+a.underline:hover { 
+  -webkit-text-decoration-color: #28B1E1;
+  text-decoration-color: #28B1E1; 
+}
+
+a.underline:active {
+  -webkit-text-decoration-color: #006E94;
+  text-decoration-color: #006E94; 
+}*/
