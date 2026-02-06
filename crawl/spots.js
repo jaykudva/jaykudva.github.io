@@ -6,8 +6,7 @@ const CRAWL_SPOTS = [
     // 47.62364944802572, -122.32215711022045
     coords: { lat: 47.62364944802572, lng: -122.32215711022045 },
     note: "i love pistachios and this place has a pistachio latte AND ALLEGEDLY ALSO KUNAFEH",
-    mustTry: "pistachio latte",
-    photo: "photos/mintish.jpg" // optional: path to photo in /photos/ folder
+    mustTry: "pistachio latte"
   },
   {
     name: "Bad Chancla",

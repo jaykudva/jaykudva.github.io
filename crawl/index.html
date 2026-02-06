@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PLACES I'VE NEVER BEEN BEFORE TOUR</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;600&family=Pirata+One&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Pirata+One&display=swap" rel="stylesheet">
 
   <!-- OG Meta Tags for link previews -->
   <meta property="og:title" content="Seattle Food & Bar Crawl">
@@ -21,15 +21,16 @@
 
   <style>
     :root {
-      --bg-light: #f5f5f5;
-      --bg-dark: #121212;
-      --text-light: #1a1a1a;
-      --text-dark: #e0e0e0;
-      --container-bg-light: #ffffff;
-      --container-bg-dark: #1e1e1e;
-      --blue: #6CB2D1;
-      --green: #2d6a4f;
-      --coral: #ff5f42;
+      --bg-light: #f5f0eb;
+      --bg-dark: #2a2620;
+      --text-light: #1a1512;
+      --text-dark: #e8e3de;
+      --container-bg-light: #fdfaf5;
+      --container-bg-dark: #3d3630;
+      --accent: #a89968;
+      --accent-light: #c4b59a;
+      --accent-muted: #8b7d6b;
+      --coral: #c97654;
     }
 
     * {
@@ -41,10 +42,11 @@
     html, body {
       height: 100%;
       width: 100%;
-      font-family: 'Inter', sans-serif;
+      font-family: 'Instrument Serif', serif;
       transition: background-color 0.3s, color 0.3s;
       background-color: var(--bg-dark);
       color: var(--text-dark);
+      font-weight: 400;
     }
 
     body.light {
@@ -58,27 +60,41 @@
       align-items: center;
       max-width: 1400px;
       margin: 0 auto;
-      padding: 1rem;
-      padding-bottom: 1.5rem;
-      border-bottom: 1px solid rgba(108, 178, 209, 0.1);
+      padding: 1.25rem 2rem;
+      border-bottom: 2px solid rgba(168, 153, 104, 0.15);
       flex-shrink: 0;
-      height: 80px;
+      height: auto;
       box-sizing: border-box;
+      background: linear-gradient(135deg, rgba(168, 153, 104, 0.05) 0%, transparent 100%);
     }
 
     .header h1 {
       font-family: 'Pirata One', cursive;
-      font-size: 2rem;
+      font-size: 2.5rem;
       font-weight: 400;
-      letter-spacing: 1px;
+      letter-spacing: 0.5px;
+      color: var(--accent);
     }
 
     .theme-toggle {
-      background: transparent;
-      border: none;
-      font-size: 1.2rem;
+      background: rgba(168, 153, 104, 0.1);
+      border: 2px solid rgba(168, 153, 104, 0.3);
+      font-size: 1.3rem;
       cursor: pointer;
       z-index: 2;
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .theme-toggle:hover {
+      background: rgba(168, 153, 104, 0.2);
+      border-color: var(--accent);
+      transform: scale(1.05);
     }
 
     .crawl-container {
@@ -91,6 +107,7 @@
       position: relative;
       padding: 0;
       list-style: none;
+      padding-top: 2rem;
     }
 
     .crawl-list::before {
@@ -101,88 +118,113 @@
       top: 50px;
       bottom: 0;
       width: 2px;
-      background: linear-gradient(to bottom, var(--blue), transparent);
+      background: linear-gradient(to bottom, var(--accent), transparent);
       opacity: 0.3;
     }
 
     .crawl-item {
-      margin-bottom: 1.5rem;
-      padding: 1.5rem;
-      border-radius: 16px;
+      margin-bottom: 2rem;
+      padding: 0;
+      border-radius: 24px;
       background: var(--container-bg-dark);
-      transition: background 0.3s, box-shadow 0.3s;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
       position: relative;
-      display: flex;
-      gap: 1rem;
-      align-items: stretch;
+      display: grid;
+      grid-template-columns: 1fr;
       margin-left: 50%;
       transform: translateX(-50%);
-      width: 90%;
-      max-width: 640px;
+      width: 92%;
+      max-width: 700px;
+      border: 1px solid rgba(168, 153, 104, 0.1);
+      overflow: hidden;
     }
 
     body.light .crawl-item {
       background: var(--container-bg-light);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+      border: 1px solid rgba(168, 153, 104, 0.15);
     }
 
     .crawl-item:hover {
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3);
+      transform: translateX(-50%) translateY(-4px);
+      box-shadow: 0 12px 32px rgba(168, 153, 104, 0.15);
     }
 
     body.light .crawl-item:hover {
-      box-shadow: 0 6px 16px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 12px 32px rgba(168, 153, 104, 0.08);
     }
 
     .crawl-number {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 48px;
-      height: 48px;
+      width: 56px;
+      height: 56px;
       border-radius: 50%;
-      background: var(--blue);
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
       color: var(--bg-dark);
       font-weight: 600;
-      font-size: 1.1rem;
+      font-size: 1.2rem;
       flex-shrink: 0;
+      box-shadow: 0 4px 12px rgba(168, 153, 104, 0.3);
+    }
+
+    .crawl-top {
+      display: flex;
+      gap: 1.5rem;
+      align-items: center;
+      padding: 2rem 2rem 0 2rem;
     }
 
     .crawl-content {
       flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .crawl-bottom {
+      padding: 1.5rem 2rem 2rem 2rem;
+      border-top: 1px solid rgba(168, 153, 104, 0.1);
     }
 
     .crawl-name {
-      font-size: 1.1rem;
+      font-size: 1.25rem;
       font-weight: 600;
-      margin-bottom: 0.25rem;
+      margin-bottom: 0.5rem;
       color: inherit;
+      font-style: italic;
     }
 
     .crawl-meta {
       display: flex;
       gap: 0.75rem;
-      margin-bottom: 0.75rem;
-      font-size: 0.85rem;
+      margin-bottom: 1rem;
+      font-size: 0.9rem;
       flex-wrap: wrap;
       align-items: center;
     }
 
     .crawl-type {
       display: inline-block;
-      padding: 0.25rem 0.75rem;
-      border-radius: 12px;
-      background: rgba(45, 106, 79, 0.15);
-      color: var(--green);
-      font-weight: 600;
+      padding: 0.35rem 1rem;
+      border-radius: 20px;
+      background: rgba(168, 153, 104, 0.12);
+      color: var(--accent-muted);
+      font-weight: 500;
       text-transform: capitalize;
+      font-style: italic;
+      border: 1px solid rgba(168, 153, 104, 0.25);
     }
 
     .crawl-neighborhood {
       display: inline-block;
       color: var(--text-dark);
       opacity: 0.7;
+      font-size: 0.9rem;
+      font-style: italic;
     }
 
     body.light .crawl-neighborhood {
@@ -191,19 +233,22 @@
 
     .crawl-note {
       font-size: 0.95rem;
-      line-height: 1.5;
-      margin-bottom: 0.5rem;
+      line-height: 1.6;
+      margin-bottom: 0.75rem;
       font-weight: 300;
+      color: inherit;
+      opacity: 0.9;
     }
 
     .crawl-mustTry {
-      padding: 0.5rem 0.75rem;
-      border-left: 3px solid var(--coral);
-      background: rgba(255, 95, 66, 0.08);
-      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      border-left: 4px solid var(--coral);
+      background: rgba(201, 118, 84, 0.1);
+      border-radius: 8px;
       font-size: 0.9rem;
-      font-weight: 300;
+      font-weight: 400;
       color: inherit;
+      font-style: italic;
     }
 
     .crawl-rating {
@@ -211,23 +256,17 @@
       width: 80px;
       height: 80px;
       border-radius: 50%;
-      background: rgba(108, 178, 209, 0.1);
-      border: 2px solid var(--blue);
+      background: linear-gradient(135deg, rgba(168, 153, 104, 0.15) 0%, rgba(196, 181, 154, 0.1) 100%);
+      border: 2.5px solid var(--accent);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 2rem;
       font-weight: 600;
-      color: var(--blue);
+      color: var(--accent);
+      box-shadow: 0 4px 12px rgba(168, 153, 104, 0.15);
     }
 
-    .crawl-photo {
-      width: 100%;
-      height: 160px;
-      object-fit: cover;
-      border-radius: 8px;
-      margin-bottom: 0.75rem;
-    }
 
     body.light .crawl-mustTry {
       background: rgba(255, 95, 66, 0.05);
@@ -264,10 +303,60 @@
 
     .crawl-list-section {
       flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-      padding-right: 1rem;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
+
+    .crawl-tabs {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 2px solid rgba(168, 153, 104, 0.1);
+      padding: 0.5rem 1rem;
+      flex-shrink: 0;
+      background: rgba(168, 153, 104, 0.03);
+    }
+
+    .crawl-tab-button {
+      padding: 0.75rem 1.5rem;
+      background: transparent;
+      border: none;
+      color: var(--text-dark);
+      font-family: 'Instrument Serif', serif;
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      border-radius: 12px;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    body.light .crawl-tab-button {
+      color: var(--text-light);
+    }
+
+    .crawl-tab-button:hover {
+      background: rgba(168, 153, 104, 0.08);
+      color: var(--accent);
+    }
+
+    .crawl-tab-button.active {
+      color: var(--accent);
+      background: rgba(168, 153, 104, 0.15);
+      font-weight: 600;
+    }
+
+    .crawl-tab-content {
+      flex: 1;
+      overflow-y: auto;
+      padding-right: 1rem;
+      padding-left: 1rem;
+      display: none;
+    }
+
+    .crawl-tab-content.active {
+      display: block;
+    }
+
 
     /* Scrollbar styling */
     .crawl-list-section::-webkit-scrollbar {
@@ -348,21 +437,30 @@
 
       .crawl-item {
         margin-bottom: 1.25rem;
-        padding: 1.25rem;
         width: 95%;
+      }
+
+      .crawl-top {
+        padding: 1.5rem 1.5rem 0 1.5rem;
+        gap: 1rem;
+      }
+
+      .crawl-bottom {
+        padding: 1.25rem 1.5rem 1.5rem 1.5rem;
       }
 
       .crawl-rating {
         width: 70px;
         height: 70px;
         font-size: 1.5rem;
+        flex-shrink: 0;
       }
     }
   </style>
 </head>
 <body class="dark">
   <div class="header">
-    <h1>Seattle Food & Bar Crawl</h1>
+    <h1>PLACES I'VE NEVER BEEN BEFORE TOUR</h1>
     <button class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌙</button>
   </div>
 
@@ -377,7 +475,19 @@
       <div id="crawl-map"></div>
     </div>
     <div class="crawl-list-section">
-      <ol class="crawl-list" id="crawlList"></ol>
+      <div class="crawl-tabs">
+        <button class="crawl-tab-button active" onclick="switchTab('places')">Places</button>
+        <button class="crawl-tab-button" onclick="switchTab('photos')">Photos</button>
+      </div>
+      <div class="crawl-tab-content active" id="places-tab">
+        <ol class="crawl-list" id="crawlList"></ol>
+      </div>
+      <div class="crawl-tab-content" id="photos-tab">
+        <div style="padding: 2rem; text-align: center;">
+          <p style="margin-bottom: 1.5rem; opacity: 0.8;">Share your photos from the crawl!</p>
+          <a href="https://photos.app.goo.gl/tbJMsx2Ugasi4UVw5" target="_blank" style="display: inline-block; padding: 1rem 2rem; background: #6CB2D1; color: #121212; border-radius: 8px; text-decoration: none; font-weight: 600;">Open Photo Album</a>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -400,24 +510,22 @@
           mustTryHtml = `<div class="crawl-mustTry">✨ Try: ${spot.mustTry}</div>`;
         }
 
-        let photoHtml = '';
-        if (spot.photo) {
-          photoHtml = `<img src="${spot.photo}" alt="${spot.name}" class="crawl-photo">`;
-        }
-
         li.innerHTML = `
-          <div class="crawl-number">${index + 1}</div>
-          <div class="crawl-content">
-            ${photoHtml}
-            <div class="crawl-name">${spot.name}</div>
-            <div class="crawl-meta">
-              <span class="crawl-type">${spot.type}</span>
-              <span class="crawl-neighborhood">${spot.neighborhood}</span>
+          <div class="crawl-top">
+            <div class="crawl-number">${index + 1}</div>
+            <div class="crawl-content">
+              <div class="crawl-name">${spot.name}</div>
+              <div class="crawl-meta">
+                <span class="crawl-type">${spot.type}</span>
+                <span class="crawl-neighborhood">${spot.neighborhood}</span>
+              </div>
             </div>
+            <div class="crawl-rating">★</div>
+          </div>
+          <div class="crawl-bottom">
             <div class="crawl-note">${spot.note}</div>
             ${mustTryHtml}
           </div>
-          <div class="crawl-rating">★</div>
         `;
 
         crawlList.appendChild(li);
@@ -435,6 +543,20 @@
       if (typeof google !== 'undefined') {
         document.dispatchEvent(new Event('theme-changed'));
       }
+    }
+
+    function switchTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.crawl-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.crawl-tab-button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+
+      // Show selected tab
+      document.getElementById(tabName + '-tab').classList.add('active');
+      event.target.classList.add('active');
     }
 
     // Render on load
