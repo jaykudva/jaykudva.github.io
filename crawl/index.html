@@ -94,6 +94,86 @@
       display: block;
     }
 
+    .music-player {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: linear-gradient(135deg, rgba(168, 153, 104, 0.95) 0%, rgba(168, 153, 104, 0.85) 100%);
+      border: 2px solid rgba(255, 255, 255, 0.2);
+      border-radius: 50px;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      z-index: 50;
+      backdrop-filter: blur(10px);
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .music-player.hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(120px);
+    }
+
+    .music-player button {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: #2a2620;
+      font-size: 1.2rem;
+      cursor: pointer;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .music-player button:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.1);
+    }
+
+    .music-player button:active {
+      transform: scale(0.95);
+    }
+
+    .music-player-info {
+      font-size: 0.9rem;
+      color: #2a2620;
+      font-weight: 500;
+      min-width: 80px;
+      text-align: center;
+    }
+
+    .music-player input[type="range"] {
+      width: 100px;
+      height: 4px;
+      cursor: pointer;
+      accent-color: #2a2620;
+    }
+
+    @media (max-width: 480px) {
+      .music-player {
+        bottom: 1rem;
+        right: 1rem;
+        padding: 0.75rem;
+        gap: 0.75rem;
+      }
+
+      .music-player-info {
+        min-width: 60px;
+        font-size: 0.8rem;
+      }
+
+      .music-player input[type="range"] {
+        width: 70px;
+      }
+    }
+
     .theme-toggle {
       background: rgba(168, 153, 104, 0.1);
       border: 2px solid rgba(168, 153, 104, 0.3);
@@ -125,7 +205,8 @@
       position: relative;
       padding: 0;
       list-style: none;
-      padding-top: 2rem;
+      padding-top: 1rem;
+      padding-bottom: 1rem;
     }
 
     .crawl-list::before {
@@ -477,6 +558,15 @@
   </style>
 </head>
 <body class="dark">
+  <audio id="themeAudio" src="jay_theme.mp3" preload="auto" autoplay muted></audio>
+
+  <div class="music-player" id="musicPlayer">
+    <button onclick="togglePlayPause()" id="playBtn" title="Play/Pause">▶️</button>
+    <div class="music-player-info" id="timeDisplay">0:00</div>
+    <input type="range" id="volumeControl" min="0" max="100" value="70" onchange="setVolume(this.value)" title="Volume">
+    <button onclick="toggleMusicPlayer()" title="Hide player">✕</button>
+  </div>
+
   <div class="header">
     <h1>PLACES I'VE NEVER BEEN BEFORE TOUR</h1>
     <div style="display: flex; gap: 0.5rem;">
@@ -501,6 +591,8 @@
       <div class="crawl-tabs">
         <button class="crawl-tab-button active" onclick="switchTab('places')">Places</button>
         <button class="crawl-tab-button" onclick="switchTab('photos')">Photos</button>
+        <button class="crawl-tab-button" onclick="switchTab('music')">Music</button>
+        <button class="crawl-tab-button" onclick="switchTab('footer')">Credits</button>
       </div>
       <div class="crawl-tab-content active" id="places-tab">
         <ol class="crawl-list" id="crawlList"></ol>
@@ -509,6 +601,26 @@
         <div style="padding: 2rem; text-align: center;">
           <p style="margin-bottom: 1.5rem; opacity: 0.8;">Share your photos from the crawl!</p>
           <a href="https://photos.app.goo.gl/tbJMsx2Ugasi4UVw5" target="_blank" style="display: inline-block; padding: 1rem 2rem; background: #a89968; color: #2a2620; border-radius: 8px; text-decoration: none; font-weight: 600;">Open Photo Album</a>
+        </div>
+      </div>
+      <div class="crawl-tab-content" id="music-tab">
+        <div style="padding: 2rem; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2rem;">
+          <div style="font-size: 3rem;">🎵</div>
+          <p style="font-size: 1rem; opacity: 0.8; margin: 0;">Now Playing</p>
+          <div id="musicPlayerTab" style="display: flex; align-items: center; gap: 1rem; background: rgba(168, 153, 104, 0.1); padding: 1.5rem; border-radius: 16px; width: 100%; justify-content: center;">
+            <button onclick="togglePlayPause()" id="playBtnTab" title="Play/Pause" style="background: linear-gradient(135deg, #a89968 0%, #c4b59a 100%); border: none; color: #2a2620; font-size: 1.5rem; cursor: pointer; width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">▶️</button>
+            <div style="text-align: center; flex: 1;">
+              <div id="timeDisplayTab" style="font-size: 1rem; font-weight: 600; color: var(--text-dark);">0:00</div>
+              <div style="font-size: 0.8rem; opacity: 0.7;">Jay's Theme</div>
+            </div>
+            <input type="range" id="volumeControlTab" min="0" max="100" value="70" onchange="setVolume(this.value)" title="Volume" style="width: 100px; cursor: pointer; accent-color: #a89968;">
+          </div>
+        </div>
+      </div>
+      <div class="crawl-tab-content" id="footer-tab">
+        <div style="padding: 2rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.5rem; min-height: 300px;">
+          <p style="font-size: 1.1rem; margin: 0;">made with ♥ by jay in seattle</p>
+          <p style="font-size: 1rem; opacity: 0.8; margin: 0;">🎵 musical arrangement by michael garbus</p>
         </div>
       </div>
     </div>
@@ -577,6 +689,82 @@
       window.location.href = 'admin.html';
     }
 
+    // Music player controls
+    const audio = document.getElementById('themeAudio');
+    const playBtn = document.getElementById('playBtn');
+    const playBtnTab = document.getElementById('playBtnTab');
+    const timeDisplay = document.getElementById('timeDisplay');
+    const timeDisplayTab = document.getElementById('timeDisplayTab');
+    const volumeControl = document.getElementById('volumeControl');
+    const volumeControlTab = document.getElementById('volumeControlTab');
+
+    let hasInteracted = false;
+
+    // Unmute on first user interaction
+    document.addEventListener('click', () => {
+      if (!hasInteracted) {
+        audio.muted = false;
+        audio.volume = 0.7;
+        volumeControl.value = 70;
+        volumeControlTab.value = 70;
+        hasInteracted = true;
+      }
+    }, { once: true });
+
+    function togglePlayPause() {
+      if (audio.paused) {
+        audio.play();
+      } else {
+        audio.pause();
+      }
+    }
+
+    function setVolume(value) {
+      audio.volume = value / 100;
+      volumeControl.value = value;
+      volumeControlTab.value = value;
+    }
+
+    function toggleMusicPlayer() {
+      const player = document.getElementById('musicPlayer');
+      player.classList.toggle('hidden');
+    }
+
+    // Update play button state
+    audio.addEventListener('play', () => {
+      playBtn.textContent = '⏸️';
+      playBtnTab.textContent = '⏸️';
+    });
+
+    audio.addEventListener('pause', () => {
+      playBtn.textContent = '▶️';
+      playBtnTab.textContent = '▶️';
+    });
+
+    // Update time display
+    audio.addEventListener('timeupdate', () => {
+      const minutes = Math.floor(audio.currentTime / 60);
+      const seconds = Math.floor(audio.currentTime % 60);
+      const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+      timeDisplay.textContent = timeStr;
+      timeDisplayTab.textContent = timeStr;
+    });
+
+    // Loop the music
+    audio.addEventListener('ended', () => {
+      audio.currentTime = 0;
+      audio.play();
+    });
+
+    // Sync volume controls
+    volumeControl.addEventListener('input', (e) => {
+      volumeControlTab.value = e.target.value;
+    });
+
+    volumeControlTab.addEventListener('input', (e) => {
+      volumeControl.value = e.target.value;
+    });
+
     function switchTab(tabName) {
       // Hide all tabs
       document.querySelectorAll('.crawl-tab-content').forEach(tab => {
@@ -589,6 +777,14 @@
       // Show selected tab
       document.getElementById(tabName + '-tab').classList.add('active');
       event.target.classList.add('active');
+
+      // Hide floating music player when on Music or Footer tab, show otherwise
+      const musicPlayer = document.getElementById('musicPlayer');
+      if (tabName === 'music' || tabName === 'footer') {
+        musicPlayer.classList.add('hidden');
+      } else {
+        musicPlayer.classList.remove('hidden');
+      }
     }
 
     // Render on load

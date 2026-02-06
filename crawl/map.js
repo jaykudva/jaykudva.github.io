@@ -75,12 +75,12 @@ function initMap() {
   });
 
   // Draw route polyline if available
-  if (CRAWL_ROUTE_POLYLINE) {
+  if (typeof CRAWL_ROUTE_POLYLINE !== 'undefined' && CRAWL_ROUTE_POLYLINE) {
     routePolyline = new google.maps.Polyline({
       map: map,
       path: google.maps.geometry.encoding.decodePath(CRAWL_ROUTE_POLYLINE),
       geodesic: true,
-      strokeColor: '#6CB2D1',
+      strokeColor: '#a89968',
       strokeOpacity: 0.7,
       strokeWeight: 3,
       clickable: false
