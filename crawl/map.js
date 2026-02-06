@@ -4,6 +4,9 @@
 let map;
 let markers = [];
 let routePolyline;
+let markerElements = [];
+const markerSizes = {};
+let currentHighlightedIndex = null;
 
 // Standard Google Maps light (daytime) theme with POIs hidden
 const darkMapStyles = [
@@ -20,9 +23,9 @@ const lightMapStyles = [
 function getMarkerIconSvg(number) {
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
-      <circle cx="24" cy="20" r="16" fill="#6CB2D1" stroke="#fff" stroke-width="2"/>
-      <text x="24" y="26" font-size="18" font-weight="bold" text-anchor="middle" fill="#121212" font-family="Arial">${number}</text>
-      <polygon points="24,40 16,28 32,28" fill="#6CB2D1"/>
+      <circle cx="24" cy="20" r="16" fill="#a89968" stroke="#fff" stroke-width="2"/>
+      <text x="24" y="27" font-size="18" font-weight="300" text-anchor="middle" fill="#2a2620" font-family="'Instrument Serif', serif">${number}</text>
+      <polygon points="24,40 16,28 32,28" fill="#a89968"/>
     </svg>
   `;
   return `data:image/svg+xml;base64,${btoa(svg)}`;
@@ -89,6 +92,9 @@ function initMap() {
 
   // Handle light/dark mode changes
   document.addEventListener('theme-changed', updateMapTheme);
+
+  // Setup scroll sync (highlight markers when list items are visible)
+  setTimeout(setupScrollSync, 100);
 }
 
 function updateMapTheme() {
@@ -111,8 +117,24 @@ function scrollToListItem(index) {
 function panToMarker(index) {
   if (markers[index]) {
     const position = markers[index].getPosition();
+
+    // Smoothly pan the map to this location
     map.panTo(position);
-    google.maps.event.trigger(markers[index], 'click');
+
+    // Unhighlight previously highlighted marker
+    if (currentHighlightedIndex !== null && currentHighlightedIndex !== index) {
+      unhighlightMarker(currentHighlightedIndex);
+    }
+
+    // Highlight the clicked marker
+    highlightMarker(index);
+    currentHighlightedIndex = index;
+
+    // Scroll to list item
+    const item = document.querySelector(`.crawl-item[data-index="${index}"]`);
+    if (item) {
+      item.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   }
 }
 
@@ -123,6 +145,53 @@ document.addEventListener('DOMContentLoaded', () => {
     initMap();
   }
 });
+
+// Sync markers with list scrolling (highlight visible items)
+function setupScrollSync() {
+  const options = {
+    threshold: 0.5
+  };
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      const index = parseInt(entry.target.dataset.index);
+      if (entry.isIntersecting) {
+        highlightMarker(index);
+      } else {
+        unhighlightMarker(index);
+      }
+    });
+  }, options);
+
+  // Observe all list items
+  document.querySelectorAll('.crawl-item').forEach(item => {
+    observer.observe(item);
+  });
+}
+
+function highlightMarker(index) {
+  if (!markers[index]) return;
+
+  const marker = markers[index];
+  marker.setIcon({
+    url: getMarkerIconSvg(index + 1),
+    scaledSize: new google.maps.Size(64, 64),
+    anchor: new google.maps.Point(32, 64)
+  });
+  marker.setZIndex(google.maps.Marker.MAX_ZINDEX + 1);
+}
+
+function unhighlightMarker(index) {
+  if (!markers[index]) return;
+
+  const marker = markers[index];
+  marker.setIcon({
+    url: getMarkerIconSvg(index + 1),
+    scaledSize: new google.maps.Size(48, 48),
+    anchor: new google.maps.Point(24, 48)
+  });
+  marker.setZIndex(index);
+}
 
 // Export functions for HTML onclick handlers
 window.panToMarker = panToMarker;

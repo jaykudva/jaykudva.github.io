@@ -479,7 +479,10 @@
 <body class="dark">
   <div class="header">
     <h1>PLACES I'VE NEVER BEEN BEFORE TOUR</h1>
-    <button class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌙</button>
+    <div style="display: flex; gap: 0.5rem;">
+      <button class="theme-toggle" onclick="toggleTheme()" id="themeIcon" title="Toggle theme">🌙</button>
+      <button class="theme-toggle" onclick="goToAdmin()" title="Admin">🔑</button>
+    </div>
   </div>
 
   <div class="location-status" id="locationStatus"></div>
@@ -527,6 +530,8 @@
         const li = document.createElement('li');
         li.className = 'crawl-item';
         li.dataset.index = index;
+        li.style.cursor = 'pointer';
+        li.onclick = () => panToMarker(index);
 
         let mustTryHtml = '';
         if (spot.mustTry) {
@@ -566,6 +571,10 @@
       if (typeof google !== 'undefined') {
         document.dispatchEvent(new Event('theme-changed'));
       }
+    }
+
+    function goToAdmin() {
+      window.location.href = 'admin.html';
     }
 
     function switchTab(tabName) {
