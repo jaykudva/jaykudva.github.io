@@ -76,6 +76,99 @@
       color: var(--accent);
     }
 
+    .location-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: linear-gradient(135deg, rgba(168, 153, 104, 0.2) 0%, rgba(168, 153, 104, 0.1) 100%);
+      border-bottom: 2px solid var(--accent);
+      padding: 1rem;
+      text-align: center;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+      z-index: 100;
+      max-height: 60px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      animation: slideDown 0.3s ease-out;
+    }
+
+    .location-banner.active {
+      display: flex;
+    }
+
+    @keyframes slideDown {
+      from {
+        transform: translateY(-100%);
+      }
+      to {
+        transform: translateY(0);
+      }
+    }
+
+    .location-notification {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--container-bg-dark);
+      border: 2px solid var(--accent);
+      border-radius: 24px;
+      padding: 2rem;
+      max-width: 500px;
+      text-align: center;
+      z-index: 1000;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.4);
+      animation: popIn 0.3s ease-out;
+      display: none;
+    }
+
+    .location-notification.active {
+      display: block;
+    }
+
+    .location-notification h2 {
+      font-size: 1.5rem;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+      font-style: italic;
+    }
+
+    .location-notification p {
+      font-size: 1.1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .location-notification button {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+      color: var(--bg-dark);
+      padding: 0.75rem 2rem;
+      border: none;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .location-notification button:hover {
+      transform: translateY(-2px);
+    }
+
+    @keyframes popIn {
+      from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.8);
+      }
+      to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+      }
+    }
+
     .theme-toggle {
       background: rgba(168, 153, 104, 0.1);
       border: 2px solid rgba(168, 153, 104, 0.3);
@@ -459,6 +552,14 @@
   </style>
 </head>
 <body class="dark">
+  <div class="location-banner" id="locationBanner"></div>
+
+  <div class="location-notification" id="locationNotification">
+    <h2>Moving to:</h2>
+    <p id="notificationText"></p>
+    <button onclick="closeNotification()">Got it!</button>
+  </div>
+
   <div class="header">
     <h1>PLACES I'VE NEVER BEEN BEFORE TOUR</h1>
     <button class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌙</button>
@@ -485,13 +586,16 @@
       <div class="crawl-tab-content" id="photos-tab">
         <div style="padding: 2rem; text-align: center;">
           <p style="margin-bottom: 1.5rem; opacity: 0.8;">Share your photos from the crawl!</p>
-          <a href="https://photos.app.goo.gl/tbJMsx2Ugasi4UVw5" target="_blank" style="display: inline-block; padding: 1rem 2rem; background: #6CB2D1; color: #121212; border-radius: 8px; text-decoration: none; font-weight: 600;">Open Photo Album</a>
+          <a href="https://photos.app.goo.gl/tbJMsx2Ugasi4UVw5" target="_blank" style="display: inline-block; padding: 1rem 2rem; background: #a89968; color: #2a2620; border-radius: 8px; text-decoration: none; font-weight: 600;">Open Photo Album</a>
         </div>
       </div>
     </div>
   </div>
 
   <script src="spots.js"></script>
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
   <!-- Phase 2: Add this when map is ready -->
   <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDRwNWI_uBdXXq1tE0Y_Pq_HpoaFUGdIq4&libraries=geometry"></script>
   <script src="map.js"></script>
@@ -561,6 +665,50 @@
 
     // Render on load
     document.addEventListener('DOMContentLoaded', renderCrawl);
+  </script>
+
+  <script>
+    // Firebase initialization
+    const firebaseConfig = {
+      apiKey: "AIzaSyAaIy5lKdohbQK182-XMj-yEkZa9bINwlw",
+      authDomain: "crawl-tour.firebaseapp.com",
+      databaseURL: "https://crawl-tour-default-rtdb.firebaseio.com",
+      projectId: "crawl-tour",
+      storageBucket: "crawl-tour.firebasestorage.app",
+      messagingSenderId: "712986877186",
+      appId: "1:712986877186:web:f8bdc89908431103ed761b",
+      measurementId: "G-Z4SQZ1QC89"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // Listen for location changes
+    database.ref('currentLocation').on('value', (snapshot) => {
+      const location = snapshot.val();
+      if (location) {
+        updateLocationBanner(location);
+        showLocationNotification(location);
+      }
+    });
+
+    function updateLocationBanner(location) {
+      const banner = document.getElementById('locationBanner');
+      banner.textContent = `📍 Currently at: ${location.name}`;
+      banner.classList.add('active');
+    }
+
+    function showLocationNotification(location) {
+      const notification = document.getElementById('locationNotification');
+      const text = document.getElementById('notificationText');
+      text.textContent = location.name;
+      notification.classList.add('active');
+    }
+
+    function closeNotification() {
+      document.getElementById('locationNotification').classList.remove('active');
+    }
   </script>
 </body>
 </html>

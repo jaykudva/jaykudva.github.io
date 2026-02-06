@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Crawl Tour</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Pirata+One&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-light: #f5f0eb;
+      --bg-dark: #2a2620;
+      --text-light: #1a1512;
+      --text-dark: #e8e3de;
+      --container-bg-light: #fdfaf5;
+      --container-bg-dark: #3d3630;
+      --accent: #a89968;
+      --accent-light: #c4b59a;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      width: 100%;
+      font-family: 'Instrument Serif', serif;
+      background-color: var(--bg-dark);
+      color: var(--text-dark);
+    }
+
+    .admin-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+
+    .admin-panel {
+      background: var(--container-bg-dark);
+      border: 1px solid rgba(168, 153, 104, 0.1);
+      border-radius: 24px;
+      padding: 3rem;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    }
+
+    .admin-panel h1 {
+      font-family: 'Pirata One', cursive;
+      font-size: 2rem;
+      color: var(--accent);
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+
+    .form-group {
+      margin-bottom: 1.5rem;
+    }
+
+    label {
+      display: block;
+      font-size: 0.95rem;
+      margin-bottom: 0.5rem;
+      color: var(--text-dark);
+      font-style: italic;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1px solid rgba(168, 153, 104, 0.3);
+      border-radius: 12px;
+      background: rgba(168, 153, 104, 0.05);
+      color: var(--text-dark);
+      font-family: 'Instrument Serif', serif;
+      font-size: 0.95rem;
+      transition: all 0.3s;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: rgba(168, 153, 104, 0.1);
+    }
+
+    button {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%);
+      color: var(--bg-dark);
+      border: none;
+      border-radius: 12px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      font-family: 'Instrument Serif', serif;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(168, 153, 104, 0.3);
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .status {
+      margin-top: 1rem;
+      padding: 1rem;
+      border-radius: 12px;
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    .status.success {
+      background: rgba(76, 175, 80, 0.15);
+      color: #4CAF50;
+    }
+
+    .status.error {
+      background: rgba(244, 67, 54, 0.15);
+      color: #F44336;
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-container">
+    <div class="admin-panel">
+      <h1>Admin Control</h1>
+
+      <!-- Password Form -->
+      <div id="passwordForm">
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" placeholder="Enter admin password">
+        </div>
+        <button onclick="checkPassword()">Login</button>
+        <div id="passwordStatus" class="status hidden"></div>
+      </div>
+
+      <!-- Location Form (hidden until password correct) -->
+      <div id="locationForm" class="hidden">
+        <div class="form-group">
+          <label for="location">Current Location</label>
+          <select id="location">
+            <option value="">-- Select a place --</option>
+          </select>
+        </div>
+        <button onclick="updateLocation()">Update Location</button>
+        <button onclick="logout()" style="margin-top: 0.5rem; opacity: 0.7;">Logout</button>
+        <div id="locationStatus" class="status hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="spots.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyAaIy5lKdohbQK182-XMj-yEkZa9bINwlw",
+      authDomain: "crawl-tour.firebaseapp.com",
+      databaseURL: "https://crawl-tour-default-rtdb.firebaseio.com",
+      projectId: "crawl-tour",
+      storageBucket: "crawl-tour.firebasestorage.app",
+      messagingSenderId: "712986877186",
+      appId: "1:712986877186:web:f8bdc89908431103ed761b",
+      measurementId: "G-Z4SQZ1QC89"
+    };
+
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+    const database = firebase.database();
+
+    // Set admin password (change this to your desired password)
+    const ADMIN_PASSWORD = "changeme";
+
+    function hashPassword(pwd) {
+      let hash = 0;
+      for (let i = 0; i < pwd.length; i++) {
+        const char = pwd.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      return hash.toString();
+    }
+
+    function checkPassword() {
+      const password = document.getElementById('password').value;
+      const statusEl = document.getElementById('passwordStatus');
+
+      if (hashPassword(password) === hashPassword(ADMIN_PASSWORD)) {
+        document.getElementById('passwordForm').classList.add('hidden');
+        document.getElementById('locationForm').classList.remove('hidden');
+        populateLocations();
+      } else {
+        statusEl.textContent = 'Incorrect password';
+        statusEl.className = 'status error';
+        statusEl.classList.remove('hidden');
+      }
+    }
+
+    function populateLocations() {
+      const select = document.getElementById('location');
+      CRAWL_SPOTS.forEach((spot, index) => {
+        const option = document.createElement('option');
+        option.value = index;
+        option.textContent = `${index + 1}. ${spot.name}`;
+        select.appendChild(option);
+      });
+    }
+
+    function updateLocation() {
+      const locationIndex = document.getElementById('location').value;
+      const statusEl = document.getElementById('locationStatus');
+
+      if (!locationIndex) {
+        statusEl.textContent = 'Please select a location';
+        statusEl.className = 'status error';
+        statusEl.classList.remove('hidden');
+        return;
+      }
+
+      const spot = CRAWL_SPOTS[locationIndex];
+      database.ref('currentLocation').set({
+        index: parseInt(locationIndex),
+        name: spot.name,
+        timestamp: new Date().toISOString()
+      }).then(() => {
+        statusEl.textContent = `Updated to: ${spot.name}`;
+        statusEl.className = 'status success';
+        statusEl.classList.remove('hidden');
+      }).catch(error => {
+        statusEl.textContent = 'Error updating: ' + error.message;
+        statusEl.className = 'status error';
+        statusEl.classList.remove('hidden');
+      });
+    }
+
+    function logout() {
+      document.getElementById('passwordForm').classList.remove('hidden');
+      document.getElementById('locationForm').classList.add('hidden');
+      document.getElementById('password').value = '';
+      document.getElementById('location').value = '';
+      document.getElementById('passwordStatus').classList.add('hidden');
+      document.getElementById('locationStatus').classList.add('hidden');
+    }
+
+    // Allow Enter key to submit password
+    document.getElementById('password').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') checkPassword();
+    });
+
+    document.getElementById('location').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') updateLocation();
+    });
+  </script>
+</body>
+</html>
