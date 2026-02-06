@@ -44,8 +44,6 @@ function initMap() {
   });
 
   const mapOptions = {
-    zoom: 14,
-    center: bounds.getCenter(),
     scrollwheel: true,
     styles: darkMapStyles,
     mapTypeControl: false,
@@ -87,8 +85,28 @@ function initMap() {
     });
   }
 
-  // Fit map to bounds with padding
-  map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 50 });
+  // Manually calculate and set zoom level based on bounds
+  setTimeout(() => {
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+    const latDiff = ne.lat() - sw.lat();
+    const lngDiff = ne.lng() - sw.lng();
+    const maxDiff = Math.max(latDiff, lngDiff);
+
+    // Calculate zoom level: higher zoom = more zoomed in
+    let zoom = 21;
+    if (maxDiff > 0) {
+      zoom = Math.floor(Math.log2(360 / maxDiff / 1.2));
+    }
+    zoom = Math.max(12, Math.min(zoom, 18));
+
+    // Shift center north by 10% of latitude difference to give room at top
+    const centerLat = bounds.getCenter().lat() + (latDiff * 0.2);
+    const centerLng = bounds.getCenter().lng();
+
+    map.setCenter({ lat: centerLat, lng: centerLng });
+    map.setZoom(zoom);
+  }, 100);
 
   // Handle light/dark mode changes
   document.addEventListener('theme-changed', updateMapTheme);
