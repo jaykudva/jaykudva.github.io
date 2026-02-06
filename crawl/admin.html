@@ -147,20 +147,34 @@
       <!-- Location Form (hidden until password correct) -->
       <div id="locationForm" class="hidden">
         <div class="form-group">
-          <label for="location">Current Location</label>
+          <label for="location">Location</label>
           <select id="location">
             <option value="">-- Select a place --</option>
           </select>
         </div>
-        <button onclick="updateLocation()">Update Location</button>
-        <button onclick="logout()" style="margin-top: 0.5rem; opacity: 0.7;">Logout</button>
+
+        <div class="form-group">
+          <label>Status</label>
+          <div style="display: flex; gap: 1rem;">
+            <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0; font-weight: normal;">
+              <input type="radio" name="status" value="headed" id="statusHeaded"> Headed to
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0; font-weight: normal;">
+              <input type="radio" name="status" value="at" id="statusAt" checked> At
+            </label>
+          </div>
+        </div>
+
+        <button onclick="updateLocation()">Update</button>
+        <button onclick="clearLocation()" style="margin-top: 0.5rem; background: rgba(168, 153, 104, 0.3); opacity: 0.8;">Clear</button>
+        <button onclick="logout()" style="margin-top: 0.5rem; opacity: 0.6;">Logout</button>
         <div id="locationStatus" class="status hidden"></div>
       </div>
     </div>
   </div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
   <script src="spots.js"></script>
 
   <script>
@@ -219,6 +233,7 @@
 
     function updateLocation() {
       const locationIndex = document.getElementById('location').value;
+      const statusType = document.querySelector('input[name="status"]:checked').value;
       const statusEl = document.getElementById('locationStatus');
 
       if (!locationIndex) {
@@ -232,13 +247,28 @@
       database.ref('currentLocation').set({
         index: parseInt(locationIndex),
         name: spot.name,
+        status: statusType,
         timestamp: new Date().toISOString()
       }).then(() => {
-        statusEl.textContent = `Updated to: ${spot.name}`;
+        const statusText = statusType === 'headed' ? `Headed to: ${spot.name}` : `At: ${spot.name}`;
+        statusEl.textContent = `Updated - ${statusText}`;
         statusEl.className = 'status success';
         statusEl.classList.remove('hidden');
       }).catch(error => {
         statusEl.textContent = 'Error updating: ' + error.message;
+        statusEl.className = 'status error';
+        statusEl.classList.remove('hidden');
+      });
+    }
+
+    function clearLocation() {
+      const statusEl = document.getElementById('locationStatus');
+      database.ref('currentLocation').remove().then(() => {
+        statusEl.textContent = 'Status cleared';
+        statusEl.className = 'status success';
+        statusEl.classList.remove('hidden');
+      }).catch(error => {
+        statusEl.textContent = 'Error clearing: ' + error.message;
         statusEl.className = 'status error';
         statusEl.classList.remove('hidden');
       });
