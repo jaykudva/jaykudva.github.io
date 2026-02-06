@@ -159,11 +159,14 @@
     </div>
   </div>
 
-  <script src="spots.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js"></script>
+  <script src="spots.js"></script>
 
   <script>
+    // Set admin password (change this to your desired password)
+    const ADMIN_PASSWORD = "changeme";
+
     const firebaseConfig = {
       apiKey: "AIzaSyAaIy5lKdohbQK182-XMj-yEkZa9bINwlw",
       authDomain: "crawl-tour.firebaseapp.com",
@@ -178,9 +181,6 @@
     // Initialize Firebase
     firebase.initializeApp(firebaseConfig);
     const database = firebase.database();
-
-    // Set admin password (change this to your desired password)
-    const ADMIN_PASSWORD = "changeme";
 
     function hashPassword(pwd) {
       let hash = 0;
