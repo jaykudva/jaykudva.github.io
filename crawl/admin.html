@@ -127,6 +127,23 @@
       background: rgba(244, 67, 54, 0.15);
       color: #F44336;
     }
+
+    @media (max-width: 480px) {
+      .admin-panel {
+        padding: 2rem 1.5rem;
+      }
+
+      .form-group > div[style*="display: flex"] {
+        gap: 0.5rem !important;
+        flex-wrap: wrap;
+      }
+
+      .form-group label[style*="display: flex"] {
+        flex: 1;
+        min-width: 100px;
+        margin-bottom: 0.5rem !important;
+      }
+    }
   </style>
 </head>
 <body>
@@ -169,6 +186,26 @@
         <button onclick="clearLocation()" style="margin-top: 0.5rem; background: rgba(168, 153, 104, 0.3); opacity: 0.8;">Clear</button>
         <button onclick="logout()" style="margin-top: 0.5rem; opacity: 0.6;">Logout</button>
         <div id="locationStatus" class="status hidden"></div>
+
+        <!-- Roster Management -->
+        <div class="form-group" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid rgba(168, 153, 104, 0.2);">
+          <label for="rosterPerson">Add to Roster</label>
+          <select id="rosterPerson">
+            <option value="">-- Select a person --</option>
+          </select>
+        </div>
+        <button onclick="addRosterPerson()" style="margin-bottom: 1rem;">Add Person</button>
+
+        <div class="form-group">
+          <label style="margin-bottom: 1rem;">Current Attendees</label>
+          <div id="currentAttendees" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+        </div>
+
+        <div class="form-group" style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(168, 153, 104, 0.2);">
+          <label style="margin-bottom: 1rem;">Previous Participants</label>
+          <div id="previousAttendees" style="display: flex; flex-direction: column; gap: 0.5rem;"></div>
+        </div>
+        <div id="rosterStatus" class="status hidden"></div>
       </div>
     </div>
   </div>
@@ -176,6 +213,7 @@
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
   <script src="spots.js"></script>
+  <script src="roster.js"></script>
 
   <script>
     // Set admin password (change this to your desired password)
@@ -214,6 +252,7 @@
         document.getElementById('passwordForm').classList.add('hidden');
         document.getElementById('locationForm').classList.remove('hidden');
         populateLocations();
+        populateRoster();
       } else {
         statusEl.textContent = 'Incorrect password';
         statusEl.className = 'status error';
@@ -228,6 +267,154 @@
         option.value = index;
         option.textContent = `${index + 1}. ${spot.name}`;
         select.appendChild(option);
+      });
+    }
+
+    function populateRoster() {
+      const select = document.getElementById('rosterPerson');
+      ROSTER.forEach(person => {
+        const option = document.createElement('option');
+        option.value = person.name;
+        option.textContent = person.name;
+        select.appendChild(option);
+      });
+      renderCurrentAttendees();
+    }
+
+    function addRosterPerson() {
+      const personName = document.getElementById('rosterPerson').value;
+      const statusEl = document.getElementById('rosterStatus');
+
+      if (!personName) {
+        statusEl.textContent = 'Please select a person';
+        statusEl.className = 'status error';
+        statusEl.classList.remove('hidden');
+        return;
+      }
+
+      database.ref('roster').once('value', (snapshot) => {
+        const roster = snapshot.val() || { currentParticipants: [], previousParticipants: [] };
+        const current = roster.currentParticipants || [];
+
+        if (!current.includes(personName)) {
+          current.push(personName);
+          database.ref('roster/currentParticipants').set(current).then(() => {
+            statusEl.textContent = `${personName} added!`;
+            statusEl.className = 'status success';
+            statusEl.classList.remove('hidden');
+            document.getElementById('rosterPerson').value = '';
+            renderCurrentAttendees();
+          }).catch(error => {
+            statusEl.textContent = 'Error: ' + error.message;
+            statusEl.className = 'status error';
+            statusEl.classList.remove('hidden');
+          });
+        } else {
+          statusEl.textContent = personName + ' is already here!';
+          statusEl.className = 'status error';
+          statusEl.classList.remove('hidden');
+        }
+      });
+    }
+
+    function removeRosterPerson(personName) {
+      const statusEl = document.getElementById('rosterStatus');
+
+      database.ref('roster').once('value', (snapshot) => {
+        const roster = snapshot.val() || { currentParticipants: [], previousParticipants: [] };
+        let current = roster.currentParticipants || [];
+        let previous = roster.previousParticipants || [];
+
+        // Remove from current
+        current = current.filter(p => p !== personName);
+
+        // Add to previous if not already there
+        if (!previous.includes(personName)) {
+          previous.push(personName);
+        }
+
+        database.ref('roster').set({
+          currentParticipants: current,
+          previousParticipants: previous
+        }).then(() => {
+          statusEl.textContent = `${personName} moved to previous participants`;
+          statusEl.className = 'status success';
+          statusEl.classList.remove('hidden');
+          renderCurrentAttendees();
+        }).catch(error => {
+          statusEl.textContent = 'Error: ' + error.message;
+          statusEl.className = 'status error';
+          statusEl.classList.remove('hidden');
+        });
+      });
+    }
+
+    function renderCurrentAttendees() {
+      const container = document.getElementById('currentAttendees');
+      database.ref('roster/currentParticipants').once('value', (snapshot) => {
+        const current = snapshot.val() || [];
+        container.innerHTML = '';
+
+        if (current.length === 0) {
+          container.innerHTML = '<div style="opacity: 0.6;">nobody here yet</div>';
+          return;
+        }
+
+        current.forEach(name => {
+          const btn = document.createElement('button');
+          btn.textContent = `✕ ${name}`;
+          btn.style.background = 'rgba(168, 153, 104, 0.1)';
+          btn.style.marginBottom = '0.5rem';
+          btn.onclick = () => removeRosterPerson(name);
+          container.appendChild(btn);
+        });
+      });
+
+      renderPreviousAttendees();
+    }
+
+    function renderPreviousAttendees() {
+      const container = document.getElementById('previousAttendees');
+      database.ref('roster/previousParticipants').once('value', (snapshot) => {
+        const previous = snapshot.val() || [];
+        container.innerHTML = '';
+
+        if (previous.length === 0) {
+          container.innerHTML = '<div style="opacity: 0.6;">nobody yet</div>';
+          return;
+        }
+
+        previous.forEach(name => {
+          const btn = document.createElement('button');
+          btn.textContent = `🗑️ ${name}`;
+          btn.style.background = 'rgba(244, 67, 54, 0.15)';
+          btn.style.color = '#F44336';
+          btn.style.marginBottom = '0.5rem';
+          btn.onclick = () => deletePreviousParticipant(name);
+          container.appendChild(btn);
+        });
+      });
+    }
+
+    function deletePreviousParticipant(personName) {
+      const statusEl = document.getElementById('rosterStatus');
+
+      database.ref('roster').once('value', (snapshot) => {
+        const roster = snapshot.val() || { currentParticipants: [], previousParticipants: [] };
+        let previous = roster.previousParticipants || [];
+
+        previous = previous.filter(p => p !== personName);
+
+        database.ref('roster/previousParticipants').set(previous).then(() => {
+          statusEl.textContent = `${personName} completely removed`;
+          statusEl.className = 'status success';
+          statusEl.classList.remove('hidden');
+          renderPreviousAttendees();
+        }).catch(error => {
+          statusEl.textContent = 'Error: ' + error.message;
+          statusEl.className = 'status error';
+          statusEl.classList.remove('hidden');
+        });
       });
     }
 

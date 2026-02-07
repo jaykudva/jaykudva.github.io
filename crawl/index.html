@@ -357,6 +357,29 @@
       box-shadow: 0 4px 12px rgba(168, 153, 104, 0.15);
     }
 
+    .roster-person {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.75rem;
+      text-align: center;
+    }
+
+    .roster-photo {
+      width: 80px;
+      height: 80px;
+      border-radius: 12px;
+      object-fit: cover;
+      border: 2px solid var(--accent);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .roster-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: inherit;
+    }
+
 
     body.light .crawl-mustTry {
       background: rgba(255, 95, 66, 0.05);
@@ -579,12 +602,25 @@
     <div class="crawl-list-section">
       <div class="crawl-tabs">
         <button class="crawl-tab-button active" onclick="switchTab('places')">Places</button>
+        <button class="crawl-tab-button" onclick="switchTab('roster')">Roster</button>
         <button class="crawl-tab-button" onclick="switchTab('photos')">Photos</button>
         <button class="crawl-tab-button" onclick="switchTab('music')">Music</button>
         <button class="crawl-tab-button" onclick="switchTab('footer')">Credits</button>
       </div>
       <div class="crawl-tab-content active" id="places-tab">
         <ol class="crawl-list" id="crawlList"></ol>
+      </div>
+      <div class="crawl-tab-content" id="roster-tab">
+        <div style="padding: 2rem;">
+          <div style="margin-bottom: 2.5rem;">
+            <h3 style="margin: 0 0 1.5rem 0; font-size: 1.1rem; font-weight: 600;">Here Right Now</h3>
+            <div id="currentParticipants" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 1rem;"></div>
+          </div>
+          <div>
+            <h3 style="margin: 0 0 1.5rem 0; font-size: 1.1rem; font-weight: 600;">Previous Participants</h3>
+            <div id="previousParticipants" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 1rem;"></div>
+          </div>
+        </div>
       </div>
       <div class="crawl-tab-content" id="photos-tab">
         <div style="padding: 2rem; text-align: center;">
@@ -616,6 +652,7 @@
   </div>
 
   <script src="spots.js"></script>
+  <script src="roster.js"></script>
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
@@ -659,6 +696,49 @@
 
         crawlList.appendChild(li);
       });
+    }
+
+    function renderRoster(current = [], previous = []) {
+      const currentContainer = document.getElementById('currentParticipants');
+      const previousContainer = document.getElementById('previousParticipants');
+
+      // Render current participants
+      currentContainer.innerHTML = '';
+      current.forEach(name => {
+        const person = ROSTER.find(p => p.name === name);
+        if (person) {
+          const div = document.createElement('div');
+          div.className = 'roster-person';
+          div.innerHTML = `
+            <img src="roster/${person.photo}" alt="${person.name}" class="roster-photo" onerror="this.style.display='none'">
+            <div class="roster-name">${person.name}</div>
+          `;
+          currentContainer.appendChild(div);
+        }
+      });
+
+      if (current.length === 0) {
+        currentContainer.innerHTML = '<div style="opacity: 0.5; grid-column: 1/-1; text-align: center; padding: 2rem;">nobody here yet!</div>';
+      }
+
+      // Render previous participants
+      previousContainer.innerHTML = '';
+      previous.forEach(name => {
+        const person = ROSTER.find(p => p.name === name);
+        if (person) {
+          const div = document.createElement('div');
+          div.className = 'roster-person';
+          div.innerHTML = `
+            <img src="roster/${person.photo}" alt="${person.name}" class="roster-photo" style="opacity: 0.6;" onerror="this.style.display='none'">
+            <div class="roster-name" style="opacity: 0.7;">${person.name}</div>
+          `;
+          previousContainer.appendChild(div);
+        }
+      });
+
+      if (previous.length === 0) {
+        previousContainer.innerHTML = '<div style="opacity: 0.5; grid-column: 1/-1; text-align: center; padding: 2rem;">no previous participants yet</div>';
+      }
     }
 
     function toggleTheme() {
@@ -790,11 +870,29 @@
       console.log('Location updated:', location);
       if (location) {
         updateLocationStatus(location);
+        // Update the map marker if function is available
+        if (typeof updateCurrentLocation !== 'undefined') {
+          updateCurrentLocation(location);
+        }
       } else {
         clearLocationStatus();
+        // Clear map marker if function is available
+        if (typeof clearCurrentLocation !== 'undefined') {
+          clearCurrentLocation();
+        }
       }
     }, (error) => {
       console.error('Firebase error:', error);
+    });
+
+    // Listen for roster changes
+    database.ref('roster').on('value', (snapshot) => {
+      const roster = snapshot.val() || {};
+      const current = roster.currentParticipants || [];
+      const previous = roster.previousParticipants || [];
+      renderRoster(current, previous);
+    }, (error) => {
+      console.error('Firebase roster error:', error);
     });
 
     function updateLocationStatus(location) {

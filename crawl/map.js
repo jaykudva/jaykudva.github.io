@@ -7,6 +7,7 @@ let routePolyline;
 let markerElements = [];
 const markerSizes = {};
 let currentHighlightedIndex = null;
+let currentLocationMarker = null;
 
 // Standard Google Maps light (daytime) theme with POIs hidden
 const darkMapStyles = [
@@ -29,6 +30,98 @@ function getMarkerIconSvg(number) {
     </svg>
   `;
   return `data:image/svg+xml;base64,${btoa(svg)}`;
+}
+
+// Create current location marker (larger, different color)
+function createCurrentLocationIcon(emoji) {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 60 60" width="60" height="60">
+      <circle cx="30" cy="25" r="18" fill="#ff6b6b" stroke="#fff" stroke-width="2.5"/>
+      <polygon points="30,50 18,30 42,30" fill="#ff6b6b"/>
+      <text x="30" y="32" font-size="24" text-anchor="middle" dominant-baseline="central">${emoji}</text>
+    </svg>
+  `;
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+}
+
+// Store the current location index and status
+let currentLocationIndex = null;
+let currentLocationStatus = null;
+
+// Update current location marker on map
+function updateCurrentLocation(location) {
+  if (!map || !location) return;
+
+  // Get the spot's coordinates from CRAWL_SPOTS using the index
+  const spot = CRAWL_SPOTS[location.index];
+  if (!spot) return;
+
+  const index = location.index;
+  currentLocationIndex = index;
+  currentLocationStatus = location.status;
+  const emoji = location.status === 'headed' ? '🚶' : '📍';
+
+  // Hide the regular marker for this location
+  if (markers[index]) {
+    markers[index].setVisible(false);
+  }
+
+  // Remove old current location marker if it exists
+  if (currentLocationMarker) {
+    currentLocationMarker.setMap(null);
+  }
+
+  // Create the current location marker (regular size, special icon)
+  currentLocationMarker = new google.maps.Marker({
+    position: { lat: spot.coords.lat, lng: spot.coords.lng },
+    map: map,
+    title: location.name,
+    icon: {
+      url: createCurrentLocationIcon(emoji),
+      scaledSize: new google.maps.Size(48, 48),
+      anchor: new google.maps.Point(24, 48)
+    },
+    optimized: false,
+    zIndex: index
+  });
+
+  // Make the marker behave like others - it will be highlighted when scrolled into view
+  markers[index] = currentLocationMarker;
+
+  // Scroll the list to show this location by default
+  scrollToListItem(index);
+}
+
+// Clear current location marker when location is cleared
+function clearCurrentLocation() {
+  if (currentLocationIndex !== null && currentLocationIndex < CRAWL_SPOTS.length) {
+    // Restore the regular marker for this location
+    const spot = CRAWL_SPOTS[currentLocationIndex];
+    if (spot) {
+      const marker = new google.maps.Marker({
+        position: { lat: spot.coords.lat, lng: spot.coords.lng },
+        map: map,
+        title: spot.name,
+        icon: {
+          url: getMarkerIconSvg(currentLocationIndex + 1),
+          scaledSize: new google.maps.Size(48, 48),
+          anchor: new google.maps.Point(24, 48)
+        },
+        optimized: false
+      });
+
+      marker.addListener('click', () => scrollToListItem(currentLocationIndex));
+      markers[currentLocationIndex] = marker;
+    }
+  }
+
+  if (currentLocationMarker) {
+    currentLocationMarker.setMap(null);
+    currentLocationMarker = null;
+  }
+
+  currentLocationIndex = null;
+  currentLocationStatus = null;
 }
 
 function initMap() {
@@ -191,8 +284,13 @@ function highlightMarker(index) {
   if (!markers[index]) return;
 
   const marker = markers[index];
+  // Use special icon if this is the current location, otherwise use numbered icon
+  const iconUrl = (index === currentLocationIndex)
+    ? createCurrentLocationIcon(currentLocationStatus === 'headed' ? '🚶' : '📍')
+    : getMarkerIconSvg(index + 1);
+
   marker.setIcon({
-    url: getMarkerIconSvg(index + 1),
+    url: iconUrl,
     scaledSize: new google.maps.Size(64, 64),
     anchor: new google.maps.Point(32, 64)
   });
@@ -203,8 +301,13 @@ function unhighlightMarker(index) {
   if (!markers[index]) return;
 
   const marker = markers[index];
+  // Use special icon if this is the current location, otherwise use numbered icon
+  const iconUrl = (index === currentLocationIndex)
+    ? createCurrentLocationIcon(currentLocationStatus === 'headed' ? '🚶' : '📍')
+    : getMarkerIconSvg(index + 1);
+
   marker.setIcon({
-    url: getMarkerIconSvg(index + 1),
+    url: iconUrl,
     scaledSize: new google.maps.Size(48, 48),
     anchor: new google.maps.Point(24, 48)
   });
@@ -213,3 +316,5 @@ function unhighlightMarker(index) {
 
 // Export functions for HTML onclick handlers
 window.panToMarker = panToMarker;
+window.updateCurrentLocation = updateCurrentLocation;
+window.clearCurrentLocation = clearCurrentLocation;
