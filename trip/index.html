@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trip Planner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Header ── -->
+  <header id="main-header">
+    <input id="trip-name" class="trip-name-input" type="text" value="My Trip" spellcheck="false" />
+    <div class="header-dates">
+      <input id="start-date" type="date" title="Trip start" />
+      <span class="date-arrow">→</span>
+      <input id="end-date" type="date" title="Trip end" />
+    </div>
+    <div class="header-tabs">
+      <button class="tab-btn active" data-tab="calendar">Calendar</button>
+      <button class="tab-btn" data-tab="map">Map</button>
+    </div>
+    <button id="btn-theme" class="btn-theme" title="Toggle light/dark mode">☀︎</button>
+    <button id="btn-add-event" class="btn-primary">+ Add Event</button>
+  </header>
+
+  <!-- ── Filter bar ── -->
+  <div id="filter-bar">
+    <div class="view-filters">
+      <button class="filter-btn active" data-view="all">All</button>
+      <button class="filter-btn" data-view="jay-abi">Jay &amp; Abi</button>
+      <button class="filter-btn" data-view="austin-johanna">Austin &amp; Johanna</button>
+    </div>
+    <button id="btn-home" class="btn-home" title="Set home base">🏠 <span id="home-label">Set home</span></button>
+    <div id="map-legend" class="hidden">
+      <span class="legend-item"><span class="legend-dot" style="background:var(--cat-food)"></span>Food</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--cat-activity)"></span>Activity</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--cat-accommodation)"></span>Stay</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--cat-transport)"></span>Transport</span>
+      <span class="legend-item"><span class="legend-dot" style="background:var(--cat-other)"></span>Other</span>
+    </div>
+  </div>
+
+  <!-- ── Calendar view ── -->
+  <div id="calendar-view">
+
+    <!-- Unscheduled strip -->
+    <div id="unscheduled-bar">
+      <button id="toggle-unscheduled" class="unscheduled-toggle">
+        <span class="chevron" id="us-chevron">▸</span>
+        <span>Unscheduled</span>
+        <span id="us-count" class="us-badge">0</span>
+      </button>
+      <div id="pool" class="pool-area" data-zone="unscheduled">
+      </div>
+    </div>
+
+    <!-- Calendar grid -->
+    <div id="calendar-container">
+      <div id="calendar-scroll">
+        <div id="calendar-inner">
+          <div id="time-gutter">
+            <div class="gutter-spacer"></div>
+          </div>
+          <div id="days-area"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Map view ── -->
+  <div id="map-view" class="hidden">
+    <div id="map-day-strip">
+      <!-- day buttons injected by JS -->
+    </div>
+    <div id="leaflet-map"></div>
+    <div id="map-no-coords" class="hidden">
+      <p>No events have location data yet.</p>
+      <p>Edit an event and use the 📍 button to add a location.</p>
+    </div>
+  </div>
+
+  <!-- ── Modal ── -->
+  <div id="modal-overlay" class="hidden">
+    <div id="modal">
+      <h3 id="modal-title">Add Event</h3>
+
+      <div class="form-row">
+        <div class="form-group fg-2">
+          <label>Title</label>
+          <input id="evt-title" type="text" placeholder="e.g. Dinner at Trattoria Roma" />
+        </div>
+        <div class="form-group fg-1">
+          <label>Category</label>
+          <select id="evt-category">
+            <option value="food">Food &amp; Drink</option>
+            <option value="activity">Activity</option>
+            <option value="accommodation">Stay</option>
+            <option value="transport">Transport</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group fg-1">
+          <label>Day</label>
+          <select id="evt-day">
+            <option value="">Unscheduled</option>
+          </select>
+        </div>
+        <div class="form-group fg-1">
+          <label>Start Time</label>
+          <select id="evt-time">
+            <option value="">— no time —</option>
+          </select>
+        </div>
+        <div class="form-group fg-1">
+          <label>Duration</label>
+          <select id="evt-duration">
+            <option value="0.5">30 min</option>
+            <option value="1" selected>1 hr</option>
+            <option value="1.5">1.5 hr</option>
+            <option value="2">2 hr</option>
+            <option value="3">3 hr</option>
+            <option value="4">4 hr</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>People</label>
+        <div class="people-chips" id="people-chips">
+          <button type="button" class="person-chip" data-person="jay">Jay</button>
+          <button type="button" class="person-chip" data-person="abi">Abi</button>
+          <button type="button" class="person-chip" data-person="austin">Austin</button>
+          <button type="button" class="person-chip" data-person="johanna">Johanna</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Location</label>
+        <div class="location-row">
+          <input id="evt-place" type="text" placeholder="Address or Google Maps link" />
+          <button type="button" id="btn-locate" class="btn-locate" title="Find location">📍</button>
+        </div>
+        <div id="location-status" class="location-status"></div>
+        <div id="place-info" class="place-info hidden"></div>
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="evt-notes" rows="2" placeholder="Any details..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Reservation?</label>
+        <div class="radio-group">
+          <label class="radio-label"><input type="radio" name="reservation" id="res-no" value="no" checked /> No</label>
+          <label class="radio-label"><input type="radio" name="reservation" id="res-yes" value="yes" /> Yes</label>
+        </div>
+      </div>
+
+      <div class="form-group hidden" id="reservation-details-group">
+        <label>Reservation Details</label>
+        <textarea id="evt-reservation" rows="2" placeholder="Confirmation #, time, contact..."></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button id="modal-delete" class="btn-danger hidden">Delete</button>
+        <div class="modal-actions-right">
+          <button id="modal-cancel" class="btn-ghost">Cancel</button>
+          <button id="modal-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Home modal ── -->
+  <div id="home-modal-overlay" class="hidden">
+    <div id="home-modal">
+      <h3>Home Base</h3>
+      <div class="form-group">
+        <label>Address</label>
+        <div class="location-row">
+          <input id="home-address" type="text" placeholder="Where are you staying?" />
+          <button type="button" id="btn-home-locate" class="btn-locate" title="Find on map">📍</button>
+        </div>
+        <div id="home-location-status" class="location-status"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="home-modal-clear" class="btn-danger hidden">Clear</button>
+        <div class="modal-actions-right">
+          <button id="home-modal-cancel" class="btn-ghost">Cancel</button>
+          <button id="home-modal-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
