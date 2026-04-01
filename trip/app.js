@@ -2,7 +2,7 @@
 
 // Backend API — local dev vs deployed. Update PROD_API_BASE when you deploy the server.
 const IS_LOCAL    = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const API_BASE    = IS_LOCAL ? 'http://localhost:3001' : 'https://YOUR_DEPLOYED_BACKEND_URL';
+const API_BASE    = IS_LOCAL ? 'http://localhost:3001' : 'https://grouptrip-7zs4pfuue-jays-projects-aa11c69a.vercel.app';
 
 const STORAGE_KEY = 'trip-planner-v2';
 const START_HOUR  = 0;
