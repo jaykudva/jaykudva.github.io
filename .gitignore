@@ -2,10 +2,12 @@
 
 # Dependencies
 node_modules/
+.claude/
 
 # Environment / secrets — never commit these
 .env
 .env.local
+.env.example
 .env.*.local
 
 # Logs

@@ -954,18 +954,30 @@ function renderMap() {
   }
 
   // Event markers
-  const eventsWithCoords = state.events.filter(e =>
-    e.location?.lat != null && e.location?.lng != null &&
-    eventMatchesView(e) &&
-    (mapDayFilter === null || e.day === mapDayFilter)
-  );
-
-  eventsWithCoords.forEach(evt => {
-    const color  = CAT_COLOR[evt.category] || CAT_COLOR.other;
-    const marker = L.circleMarker([evt.location.lat, evt.location.lng], {
-      radius: 9, fillColor: color, color: '#fff',
-      weight: 2, opacity: 1, fillOpacity: 0.9,
+  const eventsWithCoords = state.events
+    .filter(e =>
+      e.location?.lat != null && e.location?.lng != null &&
+      eventMatchesView(e) &&
+      (mapDayFilter === null || e.day === mapDayFilter)
+    )
+    .sort((a, b) => {
+      const dayA = a.day ?? Infinity;
+      const dayB = b.day ?? Infinity;
+      if (dayA !== dayB) return dayA - dayB;
+      return (a.hour ?? Infinity) - (b.hour ?? Infinity);
     });
+
+  eventsWithCoords.forEach((evt, idx) => {
+    const color  = CAT_COLOR[evt.category] || CAT_COLOR.other;
+    const num    = idx + 1;
+    const icon   = L.divIcon({
+      html: `<div style="width:26px;height:26px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff">${num}</div>`,
+      className: '',
+      iconSize:   [26, 26],
+      iconAnchor: [13, 13],
+      popupAnchor:[0, -16],
+    });
+    const marker = L.marker([evt.location.lat, evt.location.lng], { icon });
 
     const dayLbl  = evt.day != null ? getDayLabel(evt.day) : null;
     const dayStr  = dayLbl ? `Day ${dayLbl.num} · ${dayLbl.dow} ${dayLbl.date}` : 'Unscheduled';
@@ -973,7 +985,7 @@ function renderMap() {
     const people  = (evt.people || []).map(p => PEOPLE_LABEL[p] || p).join(', ');
 
     marker.bindPopup(`
-      <div class="map-popup-title">${escHtml(evt.title)}</div>
+      <div class="map-popup-title"><span class="map-popup-num">${num}.</span> ${escHtml(evt.title)}</div>
       <div class="map-popup-meta">
         ${dayStr}${timeStr ? ' · ' + timeStr : ''}<br>
         ${CAT_LABEL[evt.category] || evt.category}

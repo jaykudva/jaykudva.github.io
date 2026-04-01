@@ -276,6 +276,7 @@ html, body {
 .btn-home.is-set         { border-color: var(--accent); color: var(--accent-h); background: var(--accent-dim); }
 
 /* Home map marker */
+
 .home-marker-icon {
   display: flex;
   align-items: center;
@@ -1048,6 +1049,7 @@ html, body {
 .leaflet-popup-tip { background: var(--surface); }
 .leaflet-popup-content { margin: 12px 16px; font-family: 'Inter', sans-serif; }
 .map-popup-title  { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.map-popup-num    { opacity: 0.5; margin-right: 3px; }
 .map-popup-meta   { font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 .leaflet-bar a    { background: var(--surface); border-color: var(--border); color: var(--text); }
 .leaflet-bar a:hover { background: var(--surface2); }
