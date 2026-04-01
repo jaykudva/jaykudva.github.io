@@ -24,6 +24,7 @@
       <button class="tab-btn" data-tab="map">Map</button>
     </div>
     <button id="btn-theme" class="btn-theme" title="Toggle light/dark mode">☀︎</button>
+    <button id="btn-add-flight" class="btn-ghost">✈ Flights</button>
     <button id="btn-add-event" class="btn-primary">+ Add Event</button>
   </header>
 
@@ -35,6 +36,12 @@
       <button class="filter-btn" data-view="austin-johanna">Austin &amp; Johanna</button>
     </div>
     <button id="btn-home" class="btn-home" title="Set home base">🏠 <span id="home-label">Set home</span></button>
+    <button id="btn-home-travel" class="btn-home-travel is-on" title="Toggle home distance indicators">🏠 ↔</button>
+    <div id="cal-zoom-control" class="cal-zoom-control">
+      <span class="zoom-icon">−</span>
+      <input type="range" id="cal-zoom" min="0" max="100" value="0" title="Adjust row height" />
+      <span class="zoom-icon">+</span>
+    </div>
     <div id="map-legend" class="hidden">
       <span class="legend-item"><span class="legend-dot" style="background:var(--cat-food)"></span>Food</span>
       <span class="legend-item"><span class="legend-dot" style="background:var(--cat-activity)"></span>Activity</span>
@@ -175,6 +182,61 @@
         <div class="modal-actions-right">
           <button id="modal-cancel" class="btn-ghost">Cancel</button>
           <button id="modal-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Flight modal ── -->
+  <div id="flight-modal-overlay" class="hidden">
+    <div id="flight-modal">
+      <h3 id="flight-modal-title">Add Flight</h3>
+
+      <div class="form-row">
+        <div class="form-group fg-2">
+          <label>Flight Number</label>
+          <input id="flt-number" type="text" placeholder="e.g. VB101" autocomplete="off" />
+        </div>
+        <div class="form-group fg-1">
+          <label>Date</label>
+          <input id="flt-date" type="date" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Who's on this flight?</label>
+        <div class="people-chips" id="flt-people-chips">
+          <button type="button" class="person-chip" data-person="jay">Jay</button>
+          <button type="button" class="person-chip" data-person="abi">Abi</button>
+          <button type="button" class="person-chip" data-person="austin">Austin</button>
+          <button type="button" class="person-chip" data-person="johanna">Johanna</button>
+        </div>
+      </div>
+
+      <button id="flt-lookup" class="btn-primary">Look up flight</button>
+      <div id="flt-status" class="location-status" style="margin-top:8px;"></div>
+
+      <div id="flt-results" class="flt-results hidden"></div>
+
+      <!-- Time inputs — shown after a result is selected -->
+      <div id="flt-times" class="hidden">
+        <div class="form-row" style="margin-top:10px;">
+          <div class="form-group fg-1">
+            <label>Departs <span class="flt-dep-tz"></span></label>
+            <input id="flt-dep-time" type="time" />
+          </div>
+          <div class="form-group fg-1">
+            <label>Arrives (CDMX time)</label>
+            <input id="flt-arr-time" type="time" />
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:16px;">
+        <button id="flt-delete" class="btn-danger hidden">Remove Flight</button>
+        <div class="modal-actions-right">
+          <button id="flt-cancel" class="btn-ghost">Cancel</button>
+          <button id="flt-save" class="btn-primary hidden">Add Flight</button>
         </div>
       </div>
     </div>

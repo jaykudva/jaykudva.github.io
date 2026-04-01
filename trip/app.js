@@ -5,9 +5,9 @@ const IS_LOCAL    = ['localhost', '127.0.0.1'].includes(window.location.hostname
 const API_BASE    = IS_LOCAL ? 'http://localhost:3001' : 'https://YOUR_DEPLOYED_BACKEND_URL';
 
 const STORAGE_KEY = 'trip-planner-v2';
-const START_HOUR  = 7;
+const START_HOUR  = 0;
 const END_HOUR    = 23;
-const N_HOURS     = END_HOUR - START_HOUR + 1; // 17
+const N_HOURS     = END_HOUR - START_HOUR + 1; // 24
 const HOURS       = Array.from({ length: N_HOURS }, (_, i) => i + START_HOUR);
 const FIXED_COL_W = 180; // px for >7 days
 
@@ -19,12 +19,15 @@ const CAT_LABEL    = { food: 'Food & Drink', activity: 'Activity', accommodation
 // ── State ─────────────────────────────────────────────────────────────────────
 
 function defaultState() {
-  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null };
+  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [] };
 }
 
 let state = (() => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState(); }
-  catch { return defaultState(); }
+  try {
+    const s = JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState();
+    if (!s.flights) s.flights = []; // migrate old saves
+    return s;
+  } catch { return defaultState(); }
 })();
 
 function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
@@ -86,6 +89,55 @@ function getDayHeaderH() {
   return parseInt(getComputedStyle(document.documentElement).getPropertyValue('--day-header-h')) || 52;
 }
 
+// ── Flight / timezone helpers ─────────────────────────────────────────────────
+
+const TRIP_TZ = 'America/Mexico_City';
+
+// Convert an ISO datetime string to a fractional hour in CDMX time (e.g. 14.5 = 2:30 PM)
+function toTripHour(isoStr) {
+  if (!isoStr) return null;
+  const d = new Date(isoStr);
+  if (isNaN(d)) return null;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: TRIP_TZ, hour: 'numeric', minute: 'numeric', hour12: false,
+  }).formatToParts(d);
+  let h = parseInt(parts.find(p => p.type === 'hour')?.value  ?? '0', 10);
+  const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
+  if (h === 24) h = 0;
+  return h + m / 60;
+}
+
+// Return "YYYY-MM-DD" for an ISO datetime in CDMX time
+function toTripDateStr(isoStr) {
+  if (!isoStr) return null;
+  return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: TRIP_TZ });
+}
+
+// Return trip day number (1-based) for an ISO datetime interpreted in CDMX time, or null
+function isoToTripDay(isoStr) {
+  const dateStr = toTripDateStr(isoStr);
+  if (!dateStr || !state.startDate) return null;
+  const start = parseLocalDate(state.startDate);
+  const target = parseLocalDate(dateStr);
+  const diff = Math.round((target - start) / 86400000) + 1;
+  return diff >= 1 && diff <= getDayCount() ? diff : null;
+}
+
+// Return trip day number for a flight object using its stored date string
+function flightDay(f) {
+  if (!f.date || !state.startDate) return null;
+  const start = parseLocalDate(state.startDate);
+  const target = parseLocalDate(f.date);
+  const diff = Math.round((target - start) / 86400000) + 1;
+  return diff >= 1 && diff <= getDayCount() ? diff : null;
+}
+
+// Does this flight match the current view filter?
+function flightMatchesView(flight) {
+  if (viewFilter === 'all') return true;
+  return (flight.people || []).some(p => COUPLE_MAP[p] === viewFilter);
+}
+
 // ── View filter helpers ───────────────────────────────────────────────────────
 
 // Returns 'group' | 'jay-abi' | 'austin-johanna'
@@ -109,6 +161,7 @@ const tripNameEl   = document.getElementById('trip-name');
 const startDateEl  = document.getElementById('start-date');
 const endDateEl    = document.getElementById('end-date');
 const btnAddEvent      = document.getElementById('btn-add-event');
+const btnAddFlight     = document.getElementById('btn-add-flight');
 const btnTheme         = document.getElementById('btn-theme');
 const btnHome          = document.getElementById('btn-home');
 const homeLabel        = document.getElementById('home-label');
@@ -123,7 +176,9 @@ const filterBtns   = document.querySelectorAll('.filter-btn');
 const tabBtns      = document.querySelectorAll('.tab-btn');
 const calendarView = document.getElementById('calendar-view');
 const mapView      = document.getElementById('map-view');
-const mapLegend    = document.getElementById('map-legend');
+const mapLegend         = document.getElementById('map-legend');
+const calZoomControl    = document.getElementById('cal-zoom-control');
+const btnHomeTravelCtrl = document.getElementById('btn-home-travel');
 const mapNoCoordsEl  = document.getElementById('map-no-coords');
 const mapDayStrip    = document.getElementById('map-day-strip');
 const usBar        = document.getElementById('unscheduled-bar');
@@ -157,19 +212,33 @@ const peopleChips  = document.querySelectorAll('.person-chip');
 
 // ── Layout / sizing ───────────────────────────────────────────────────────────
 
+const calZoomEl = document.getElementById('cal-zoom');
+
 function updateHourHeight() {
-  const n = getDayCount();
-  let hh;
-  if (n > 0 && n <= 7) {
-    const available = calContainer.clientHeight;
-    hh = Math.max(36, (available - getDayHeaderH()) / N_HOURS);
-    calScroll.style.overflowY = 'hidden';
-  } else {
-    hh = 64;
-    calScroll.style.overflowY = 'auto';
-  }
+  const usable = calContainer.clientHeight - getDayHeaderH();
+  // min: fit all 24 hours without scrolling (at least 20px per hour)
+  const minHH  = Math.max(20, usable / N_HOURS);
+  // max: show ~10 hours (anything smaller scrolls)
+  const maxHH  = Math.max(minHH, usable / 10);
+
+  const pct = parseInt(calZoomEl.value, 10) / 100;
+  const hh  = minHH + pct * (maxHH - minHH);
+
+  // Scroll only when zoomed in beyond the point of fitting everything
+  calScroll.style.overflowY = hh > usable / N_HOURS + 0.5 ? 'auto' : 'hidden';
+
   document.documentElement.style.setProperty('--hour-height', hh + 'px');
 }
+
+// Restore saved zoom before first render (default 50 = halfway)
+calZoomEl.value = localStorage.getItem('trip-cal-zoom') ?? '50';
+
+calZoomEl.addEventListener('input', () => {
+  localStorage.setItem('trip-cal-zoom', calZoomEl.value);
+  updateHourHeight();
+  repositionAllCards();
+  // Travel indicators use CSS calc — they reposition automatically
+});
 
 function updateColumnWidths() {
   const n = getDayCount();
@@ -248,11 +317,51 @@ function makeDayCol(day) {
     col.appendChild(cell);
   });
 
-  // Place events
-  state.events.filter(e => e.day === day).forEach(evt => {
+  // Place events — only those with a time; day+no-time appear in the unscheduled bar
+  state.events.filter(e => e.day === day && e.hour != null).forEach(evt => {
     const card = makeEventCard(evt);
     positionCard(card, evt);
     col.appendChild(card);
+  });
+
+  // Place flight blocks for this day
+  (state.flights || []).forEach(f => {
+    if (!flightMatchesView(f)) return;
+    const arrDay = flightDay(f);
+    if (arrDay !== day) return;
+
+    const depHour = f.depHourCDMX;
+    const arrHour = f.arrHourCDMX;
+    if (depHour == null || arrHour == null) return;
+
+    // Gray overlay before departure ("not in CDMX yet")
+    const greyHours = depHour - START_HOUR;
+    if (greyHours > 0) {
+      const grayout = document.createElement('div');
+      grayout.className = 'flight-grayout';
+      grayout.style.height = `calc(${greyHours} * var(--hour-height))`;
+      const lbl = document.createElement('div');
+      lbl.className = 'flight-grayout-label';
+      lbl.textContent = 'Not in CDMX';
+      grayout.appendChild(lbl);
+      col.appendChild(grayout);
+    }
+
+    // Flight card
+    const dur = Math.max(0.5, arrHour - depHour);
+    const fcard = document.createElement('div');
+    fcard.className = 'event-card flight-card';
+    fcard.dataset.flightId = f.id;
+    fcard.style.top    = `calc(var(--day-header-h) + ${depHour - START_HOUR} * var(--hour-height))`;
+    fcard.style.height = `calc(${dur} * var(--hour-height) - 4px)`;
+    fcard.innerHTML = `
+      <div class="event-card-title">✈ ${f.number}</div>
+      <div class="event-card-meta">
+        <span class="event-time-label">${f.departure.iata} → ${f.arrival.iata}</span>
+      </div>
+    `;
+    fcard.addEventListener('click', () => openFlightModal(f.id));
+    col.appendChild(fcard);
   });
 
   return col;
@@ -267,6 +376,15 @@ function positionCard(card, evt) {
   const dur    = evt.duration || 1;
   card.style.top    = `calc(var(--day-header-h) + ${offset} * var(--hour-height))`;
   card.style.height = `calc(${dur} * var(--hour-height) - 4px)`;
+}
+
+// Scroll the calendar so that `hour` is vertically centered in the viewport.
+function scrollToHour(hour) {
+  requestAnimationFrame(() => {
+    const hh     = getHourHeight();
+    const target = getDayHeaderH() + (hour - START_HOUR) * hh - calContainer.clientHeight / 2;
+    calScroll.scrollTop = Math.max(0, target);
+  });
 }
 
 function repositionAllCards() {
@@ -338,12 +456,42 @@ function makeEventCard(evt) {
     if (!status.open) {
       const badge = document.createElement('span');
       badge.className   = 'evt-closed-badge';
-      badge.textContent = 'Closed';
+      badge.textContent = status.closedToday ? 'Closed today' : 'Closed';
       meta.appendChild(badge);
     }
   }
 
-  card.append(editBtn, titleEl, meta);
+  const resizeHandle = document.createElement('div');
+  resizeHandle.className = 'resize-handle';
+  resizeHandle.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    const startY   = e.clientY;
+    const startDur = evt.duration || 1;
+    const hh       = getHourHeight();
+    document.body.style.cursor = 'ns-resize';
+    card.draggable = false;
+
+    function onMove(me) {
+      const deltaDur = (me.clientY - startY) / hh;
+      // Snap to nearest 0.5hr, minimum 0.5hr
+      const newDur = Math.max(0.5, Math.round((startDur + deltaDur) * 2) / 2);
+      evt.duration = newDur;
+      card.style.height = `calc(${newDur} * var(--hour-height) - 4px)`;
+    }
+    function onUp() {
+      document.body.style.cursor = '';
+      card.draggable = true;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      save();
+      renderTravelTimes();
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+
+  card.append(editBtn, titleEl, meta, resizeHandle);
   card.addEventListener('dragstart', onDragStart);
   card.addEventListener('dragend',   onDragEnd);
   return card;
@@ -351,7 +499,8 @@ function makeEventCard(evt) {
 
 function renderUnscheduled() {
   pool.innerHTML = '';
-  const unscheduled = state.events.filter(e => e.day == null);
+  // "Unscheduled" = no time set (may or may not have a day)
+  const unscheduled = state.events.filter(e => e.hour == null);
   usCount.textContent = unscheduled.length;
 
   if (unscheduled.length === 0) {
@@ -372,6 +521,15 @@ function renderUnscheduled() {
     dot.className = `chip-dot cat-dot-${evt.category}`;
     chip.appendChild(dot);
     chip.appendChild(document.createTextNode(evt.title));
+
+    // If a day is assigned but no time, show a small day tag
+    if (evt.day != null) {
+      const lbl = getDayLabel(evt.day);
+      const tag = document.createElement('span');
+      tag.style.cssText = 'margin-left:5px;font-size:10px;opacity:0.55;';
+      tag.textContent   = `${lbl.dow} ${lbl.date}`;
+      chip.appendChild(tag);
+    }
 
     chip.addEventListener('dragstart', onDragStart);
     chip.addEventListener('dragend',   onDragEnd);
@@ -459,7 +617,38 @@ pool.addEventListener('drop', e => {
   save(); render();
 });
 
-// ── Travel times (OSRM) ──────────────────────────────────────────────────────
+// ── Travel times ─────────────────────────────────────────────────────────────
+
+let showHomeTravel = localStorage.getItem('trip-show-home-travel') !== 'false';
+
+const btnHomeTravelEl = document.getElementById('btn-home-travel');
+function applyHomeTravelToggle() {
+  btnHomeTravelEl.classList.toggle('is-on', showHomeTravel);
+  btnHomeTravelEl.title = showHomeTravel ? 'Hide home distances' : 'Show home distances';
+}
+applyHomeTravelToggle();
+
+btnHomeTravelEl.addEventListener('click', () => {
+  showHomeTravel = !showHomeTravel;
+  localStorage.setItem('trip-show-home-travel', showHomeTravel);
+  applyHomeTravelToggle();
+  // Remove existing home indicators and re-render
+  document.querySelectorAll('[data-travel-key^="home-"]').forEach(el => el.remove());
+  if (showHomeTravel) renderTravelTimes();
+});
+
+function makeHomeTravelIndicator(col, key, topOffset, labelHtml, warn) {
+  col.querySelector(`[data-travel-key="${key}"]`)?.remove();
+  const ind = document.createElement('div');
+  ind.className = 'travel-indicator';
+  ind.dataset.travelKey = key;
+  ind.style.top = `calc(var(--day-header-h) + ${topOffset} * var(--hour-height) - 10px)`;
+  const bdg = document.createElement('span');
+  bdg.className = `travel-badge travel-badge-home${warn ? ' travel-badge-warn' : ''}`;
+  bdg.innerHTML = labelHtml;
+  ind.appendChild(bdg);
+  col.appendChild(ind);
+}
 
 const OSRM_CACHE_KEY = 'trip-osrm-cache';
 
@@ -526,9 +715,24 @@ async function renderTravelTimes() {
     const col = daysArea.querySelector(`.day-col[data-day="${day}"]`);
     if (!col) continue;
 
-    const dayEvents = state.events
-      .filter(e => e.day === day && e.hour != null && e.location?.lat != null)
-      .sort((a, b) => a.hour - b.hour);
+    // Include flight arrivals (with airport coords) as virtual events so the
+    // home-distance system automatically shows airport → home travel time.
+    const flightArrivals = (state.flights || [])
+      .filter(f => flightDay(f) === day
+               && flightMatchesView(f)
+               && f.arrival?.lat != null && f.arrival?.lng != null
+               && f.arrHourCDMX != null)
+      .map(f => ({
+        id:       `__flight_${f.id}`,
+        hour:     f.arrHourCDMX,
+        duration: 0,
+        location: { lat: f.arrival.lat, lng: f.arrival.lng },
+      }));
+
+    const dayEvents = [
+      ...state.events.filter(e => e.day === day && e.hour != null && e.location?.lat != null),
+      ...flightArrivals,
+    ].sort((a, b) => a.hour - b.hour);
 
     for (let i = 0; i < dayEvents.length - 1; i++) {
       if (signal.aborted) return;
@@ -568,6 +772,61 @@ async function renderTravelTimes() {
       indicator.appendChild(badge);
       col.appendChild(indicator);
     }
+
+    // ── Home distance indicators ──────────────────────────────────────────
+    // For every event not back-to-back with a predecessor → show home → event.
+    // For every event not back-to-back with a successor   → show event → home.
+    if (!showHomeTravel || state.home?.lat == null || dayEvents.length === 0) continue;
+    const home = state.home;
+
+    for (const evt of dayEvents) {
+      if (signal.aborted) return;
+
+      const isFlightArrival = evt.id.startsWith('__flight_');
+
+      // Does any other event end within 30 min before this one starts?
+      const hasPred = dayEvents.some(o =>
+        o.id !== evt.id && (evt.hour - (o.hour + (o.duration ?? 1))) <= 0.5 && o.hour <= evt.hour
+      );
+      // Does any other event start within 30 min after this one ends?
+      const hasSucc = dayEvents.some(o =>
+        o.id !== evt.id && (o.hour - (evt.hour + (evt.duration ?? 1))) <= 0.5 && o.hour >= evt.hour
+      );
+
+      // Don't show "🏠 → airport" for inbound flights — the grayout already
+      // communicates they're coming from outside, and you're not leaving from home.
+      if (!hasPred && !isFlightArrival) {
+        const info = await getDrivingInfo(home, evt.location, signal);
+        if (info && !signal.aborted) {
+          const { driveMin, walkMin, approx } = info;
+          if (walkMin >= 1) {
+            const prefix = approx ? '~' : '';
+            const label  = walkMin <= 25
+              ? `🏠 → 🚶 ${prefix}${walkMin}m · 🚗 ${prefix}${driveMin}m`
+              : `🏠 → 🚗 ${prefix}${driveMin}m`;
+            makeHomeTravelIndicator(col, `home-to-${evt.id}`, evt.hour - START_HOUR, label, walkMin > 10);
+          }
+        }
+      }
+
+      if (!hasSucc) {
+        if (signal.aborted) return;
+        const info = await getDrivingInfo(evt.location, home, signal);
+        if (info && !signal.aborted) {
+          const { driveMin, walkMin, approx } = info;
+          if (walkMin >= 1) {
+            const prefix    = approx ? '~' : '';
+            const label     = walkMin <= 25
+              ? `🚶 ${prefix}${walkMin}m · 🚗 ${prefix}${driveMin}m → 🏠`
+              : `🚗 ${prefix}${driveMin}m → 🏠`;
+            // Use ?? 1 (not || 1) so duration=0 for flight arrivals places the
+            // indicator right at arrival time, not 1 hour later.
+            const endOffset = evt.hour + (evt.duration ?? 1) - START_HOUR;
+            makeHomeTravelIndicator(col, `home-from-${evt.id}`, endOffset, label, walkMin > 10);
+          }
+        }
+      }
+    }
   }
 }
 
@@ -603,9 +862,11 @@ tabBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     activeTab = btn.dataset.tab;
     tabBtns.forEach(b => b.classList.toggle('active', b === btn));
-    calendarView.classList.toggle('hidden', activeTab !== 'calendar');
-    mapView.classList.toggle('hidden',      activeTab !== 'map');
-    mapLegend.classList.toggle('hidden',    activeTab !== 'map');
+    calendarView.classList.toggle('hidden',     activeTab !== 'calendar');
+    mapView.classList.toggle('hidden',          activeTab !== 'map');
+    mapLegend.classList.toggle('hidden',        activeTab !== 'map');
+    calZoomControl.classList.toggle('hidden',   activeTab !== 'calendar');
+    btnHomeTravelCtrl.classList.toggle('hidden', activeTab !== 'calendar');
 
     if (activeTab === 'map') {
       // Leaflet needs the container visible before init
@@ -614,6 +875,7 @@ tabBtns.forEach(btn => {
       // Recalculate layout after returning to calendar
       updateHourHeight();
       repositionAllCards();
+      scrollToHour(17);
     }
   });
 });
@@ -897,16 +1159,28 @@ function isGoogleMapsUrl(str) {
 }
 
 // Given Google Places periods and a JS day-of-week (0=Sun) + hour (int),
-// return { open: bool, closesAt: "HH:MM" | null, opensAt: "HH:MM" | null }
+// return { open: bool, closedToday: bool, closesAt: "HH:MM" | null, opensAt: "HH:MM" | null }
 function hoursStatusAt(periods, dowJS, hour) {
   for (const p of periods) {
     if (p.open.day !== dowJS) continue;
-    const openH  = parseInt(p.open.time.slice(0, 2), 10);
-    const openM  = parseInt(p.open.time.slice(2, 4), 10);
-    const closeH = p.close ? parseInt(p.close.time.slice(0, 2), 10) : 24;
-    const closeM = p.close ? parseInt(p.close.time.slice(2, 4), 10) : 0;
+    const openH = parseInt(p.open.time.slice(0, 2), 10);
+    const openM = parseInt(p.open.time.slice(2, 4), 10);
+    let closeH, closeM;
+    if (!p.close) {
+      closeH = 24; closeM = 0;
+    } else if (p.close.day !== p.open.day) {
+      // Closes after midnight (next calendar day) — add 24 so comparison works
+      // e.g. close.time "0200" → closeH = 26, meaning 2 AM next day
+      closeH = parseInt(p.close.time.slice(0, 2), 10) + 24;
+      closeM = parseInt(p.close.time.slice(2, 4), 10);
+    } else {
+      closeH = parseInt(p.close.time.slice(0, 2), 10);
+      closeM = parseInt(p.close.time.slice(2, 4), 10);
+    }
     if (hour * 60 >= openH * 60 + openM && hour * 60 < closeH * 60 + closeM) {
-      return { open: true, closesAt: p.close ? formatHour(closeH) : null };
+      // For display, unwrap the +24 offset back to real clock hour
+      const displayH = p.close ? (closeH >= 24 ? closeH - 24 : closeH) : null;
+      return { open: true, closedToday: false, closesAt: displayH != null ? formatHour(displayH) : null };
     }
   }
   // Find next open window to report "opens at"
@@ -914,9 +1188,9 @@ function hoursStatusAt(periods, dowJS, hour) {
   if (todayPeriods.length) {
     const next = todayPeriods.sort((a, b) => parseInt(a.open.time) - parseInt(b.open.time))[0];
     const oh = parseInt(next.open.time.slice(0, 2), 10);
-    return { open: false, opensAt: formatHour(oh) };
+    return { open: false, closedToday: false, opensAt: formatHour(oh) };
   }
-  return { open: false, opensAt: null };
+  return { open: false, closedToday: true, opensAt: null };
 }
 
 let currentPlaceInfo = null; // set when a Maps link is resolved in the modal
@@ -982,7 +1256,8 @@ function renderPlaceInfoPanel() {
       const status = hoursStatusAt(info.hours.periods, dow, hourVal);
       if (!status.open) {
         const hint = status.opensAt ? ` (opens ${status.opensAt})` : '';
-        warningHtml = `<div class="place-hours-warn">⚠️ Closed at this time${escHtml(hint)}</div>`;
+        const msg  = status.closedToday ? 'Closed today' : `Closed at this time${hint}`;
+        warningHtml = `<div class="place-hours-warn">⚠️ ${escHtml(msg)}</div>`;
       } else {
         const dur       = parseFloat(evtDuration.value) || 1;
         const endStatus = hoursStatusAt(info.hours.periods, dow, Math.floor(hourVal + dur));
@@ -1305,6 +1580,263 @@ homeModalOverlay.addEventListener('keydown', e => {
   if (e.key === 'Enter')  homeModalSave.click();
 });
 
+// ── Flights ───────────────────────────────────────────────────────────────────
+
+const flightModalOverlay = document.getElementById('flight-modal-overlay');
+const flightModalTitle   = document.getElementById('flight-modal-title');
+const fltNumber          = document.getElementById('flt-number');
+const fltDate            = document.getElementById('flt-date');
+const fltPeopleChips     = document.querySelectorAll('#flt-people-chips .person-chip');
+const fltLookup          = document.getElementById('flt-lookup');
+const fltStatus          = document.getElementById('flt-status');
+const fltResults         = document.getElementById('flt-results');
+const fltDelete          = document.getElementById('flt-delete');
+const fltCancel          = document.getElementById('flt-cancel');
+const fltSave            = document.getElementById('flt-save');
+
+let fltSelectedResult = null;  // the flight object chosen from lookup results
+let fltEditingId      = null;  // id of flight being edited (null = new)
+
+function openFlightModal(id = null) {
+  fltEditingId      = id;
+  fltSelectedResult = null;
+  fltResults.innerHTML = '';
+  fltResults.classList.add('hidden');
+  fltStatus.textContent = '';
+  fltSave.classList.add('hidden');
+  fltDelete.classList.toggle('hidden', !id);
+  flightModalTitle.textContent = id ? 'Edit Flight' : 'Add Flight';
+
+  if (id) {
+    const f = (state.flights || []).find(x => x.id === id);
+    if (f) {
+      fltNumber.value = f.number;
+      fltDate.value   = f.date;
+      fltPeopleChips.forEach(c => c.classList.toggle('active', (f.people || []).includes(c.dataset.person)));
+      fltSelectedResult = f;
+      // depHourCDMX is already stored in CDMX time, so label both as CDMX
+      fltDepTzEl.textContent = '(CDMX time)';
+      fltDepTime.value  = f.depHourCDMX != null ? hourToTimeStr(f.depHourCDMX) : '';
+      fltArrTime.value  = f.arrHourCDMX != null ? hourToTimeStr(f.arrHourCDMX) : '';
+      fltTimesEl.classList.remove('hidden');
+      fltSave.classList.remove('hidden');
+      fltSave.textContent = 'Save Changes';
+    }
+  } else {
+    fltNumber.value = '';
+    fltDate.value   = state.startDate || '';
+    fltSave.textContent = 'Add Flight';
+    fltPeopleChips.forEach(c => c.classList.remove('active'));
+    fltDepTime.value = '';
+    fltArrTime.value = '';
+    fltTimesEl.classList.add('hidden');
+  }
+
+  flightModalOverlay.classList.remove('hidden');
+  fltNumber.focus();
+}
+
+fltPeopleChips.forEach(chip => {
+  chip.addEventListener('click', () => chip.classList.toggle('active'));
+});
+
+fltLookup.addEventListener('click', async () => {
+  const num  = fltNumber.value.trim();
+  const date = fltDate.value;
+  if (!num || !date) { fltStatus.textContent = 'Enter a flight number and date first.'; return; }
+
+  fltStatus.className   = 'location-status';
+  fltStatus.textContent = 'Looking up…';
+  fltResults.innerHTML  = '';
+  fltResults.classList.add('hidden');
+  fltTimesEl.classList.add('hidden');
+  fltSave.classList.add('hidden');
+  fltSelectedResult = null;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/flight?number=${encodeURIComponent(num)}&date=${encodeURIComponent(date)}`);
+    const data = await resp.json();
+    if (!resp.ok) {
+      fltStatus.className   = 'location-status err';
+      fltStatus.textContent = data.error || 'Lookup failed.';
+      return;
+    }
+
+    fltStatus.textContent = '';
+    const { flights } = data;
+
+    if (flights.length === 1) {
+      // Auto-select if only one result
+      selectFlightResult(flights[0]);
+    } else {
+      // Show list to pick from
+      fltResults.innerHTML = '';
+      flights.forEach(f => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'flt-result-item';
+        item.innerHTML = `
+          <span class="flt-result-num">${escHtml(f.number)}</span>
+          <span class="flt-result-route">${escHtml(f.departure.iata || '?')} → ${escHtml(f.arrival.iata || '?')}</span>
+          <span class="flt-result-times">${formatIsoForDisplay(f.departure.time)} → ${formatIsoForDisplay(f.arrival.time, true)}</span>
+          <span class="flt-result-airline">${escHtml(f.airline)}</span>
+        `;
+        item.addEventListener('click', () => {
+          fltResults.querySelectorAll('.flt-result-item').forEach(el => el.classList.remove('selected'));
+          item.classList.add('selected');
+          selectFlightResult(f);
+        });
+        fltResults.appendChild(item);
+      });
+      fltResults.classList.remove('hidden');
+    }
+  } catch (err) {
+    fltStatus.className   = 'location-status err';
+    fltStatus.textContent = 'Network error — is the server running?';
+  }
+});
+
+const fltTimesEl  = document.getElementById('flt-times');
+const fltDepTime  = document.getElementById('flt-dep-time');
+const fltArrTime  = document.getElementById('flt-arr-time');
+const fltDepTzEl  = document.querySelector('.flt-dep-tz');
+
+function selectFlightResult(f) {
+  fltSelectedResult = f;
+  fltStatus.className   = 'location-status ok';
+  fltStatus.textContent = `${f.departure.iata} → ${f.arrival.iata} · ${f.airline}`;
+
+  // Show time inputs — pre-fill from API if times are available, else leave blank
+  fltDepTzEl.textContent = f.departure.tz ? `(${f.departure.tz.split('/').pop().replace('_', ' ')})` : '(local)';
+  fltDepTime.value = f.departure.time ? isoToTimeInput(f.departure.time, f.departure.tz) : '';
+  fltArrTime.value = f.arrival.time   ? isoToTimeInput(f.arrival.time,   TRIP_TZ)        : '';
+  fltTimesEl.classList.remove('hidden');
+  fltSave.classList.remove('hidden');
+}
+
+// Convert an ISO datetime to "HH:MM" for <input type="time"> in the given timezone
+function isoToTimeInput(isoStr, tz) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d)) return '';
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz || TRIP_TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+    }).formatToParts(d);
+    const h = parts.find(p => p.type === 'hour')?.value   ?? '00';
+    const m = parts.find(p => p.type === 'minute')?.value ?? '00';
+    return `${h === '24' ? '00' : h}:${m}`;
+  } catch { return ''; }
+}
+
+function timeInputToHour(str) {
+  if (!str) return null;
+  const [h, m] = str.split(':').map(Number);
+  return h + (m || 0) / 60;
+}
+
+function hourToTimeStr(h) {
+  const hInt = Math.floor(h);
+  const mInt = Math.round((h - hInt) * 60);
+  return `${String(hInt).padStart(2,'0')}:${String(mInt).padStart(2,'0')}`;
+}
+
+// Build an ISO datetime by interpreting "HH:MM" as local time in the given IANA timezone.
+// Returns an ISO string (e.g. "2026-04-22T15:00:00-04:00") or null if tz unknown.
+function buildIsoInTz(dateStr, timeStr, tz) {
+  if (!tz || !dateStr || !timeStr) return null;
+  try {
+    // Get the UTC offset for this timezone on this date by creating a
+    // reference date and measuring its offset via Intl.
+    const naive = new Date(`${dateStr}T${timeStr}:00`); // local browser time, wrong tz but good enough for offset lookup
+    const utcMs = naive.getTime();
+    // Use Intl to find what UTC time corresponds to "dateStr timeStr" in tz
+    // Strategy: binary-search is complex; instead format a UTC date through the
+    // target tz and compute the offset.
+    const fmtUtc = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    });
+    // Find offset by comparing what Intl shows for a known UTC date
+    const probe = new Date(`${dateStr}T12:00:00Z`);
+    const probeLocal = fmtUtc.formatToParts(probe);
+    const ph = parseInt(probeLocal.find(p=>p.type==='hour').value);
+    const offsetH = ph - 12; // approximate offset in hours
+    const isoOffset = offsetH >= 0 ? `+${String(offsetH).padStart(2,'0')}:00` : `-${String(Math.abs(offsetH)).padStart(2,'0')}:00`;
+    return `${dateStr}T${timeStr}:00${isoOffset}`;
+  } catch { return null; }
+}
+
+// Format an ISO datetime for display in CDMX time
+function formatIsoForDisplay(isoStr, cdmxOnly = false) {
+  if (!isoStr) return '?';
+  try {
+    const d = new Date(isoStr);
+    // Show time in CDMX timezone
+    const cdmx = d.toLocaleTimeString('en-US', { timeZone: TRIP_TZ, hour: 'numeric', minute: '2-digit', hour12: true });
+    if (cdmxOnly) return cdmx + ' CDMX';
+    // For departure show local departure time
+    const local = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    return local;
+  } catch { return isoStr; }
+}
+
+fltSave.addEventListener('click', () => {
+  if (!fltSelectedResult) return;
+
+  const depHour = timeInputToHour(fltDepTime.value);
+  const arrHour = timeInputToHour(fltArrTime.value);
+  if (depHour == null || arrHour == null) {
+    fltStatus.className   = 'location-status err';
+    fltStatus.textContent = 'Enter departure and arrival times above.';
+    return;
+  }
+
+  // For departure: convert from departure airport local time to CDMX time
+  // We do this by constructing an ISO string with the departure timezone offset,
+  // then reading it back in CDMX time using Intl.
+  const depDate  = fltDate.value;
+  const depIso   = buildIsoInTz(depDate, fltDepTime.value, fltSelectedResult.departure.tz);
+  const depCDMX  = depIso ? toTripHour(depIso) : depHour; // fallback: treat as CDMX directly
+
+  const people = [...fltPeopleChips].filter(c => c.classList.contains('active')).map(c => c.dataset.person);
+  if (!state.flights) state.flights = [];
+
+  const entry = {
+    id:          fltEditingId || uid(),
+    date:        fltDate.value,
+    people,
+    ...fltSelectedResult,
+    depHourCDMX: depCDMX,
+    arrHourCDMX: arrHour,   // arrival time input is already in CDMX
+  };
+
+  if (fltEditingId) {
+    const idx = state.flights.findIndex(f => f.id === fltEditingId);
+    if (idx !== -1) state.flights[idx] = entry;
+  } else {
+    state.flights.push(entry);
+  }
+
+  save();
+  render();
+  flightModalOverlay.classList.add('hidden');
+});
+
+fltDelete.addEventListener('click', () => {
+  if (!fltEditingId) return;
+  state.flights = (state.flights || []).filter(f => f.id !== fltEditingId);
+  save();
+  render();
+  flightModalOverlay.classList.add('hidden');
+});
+
+fltCancel.addEventListener('click', () => flightModalOverlay.classList.add('hidden'));
+flightModalOverlay.addEventListener('click', e => { if (e.target === flightModalOverlay) flightModalOverlay.classList.add('hidden'); });
+
+btnAddFlight.addEventListener('click', () => openFlightModal());
+
 // ── Theme ─────────────────────────────────────────────────────────────────────
 
 function applyTheme() {
@@ -1325,3 +1857,4 @@ btnTheme.addEventListener('click', () => {
 applyTheme();
 updateHomeButton();
 render();
+scrollToHour(17);

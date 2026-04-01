@@ -209,6 +209,52 @@ html, body {
   color: var(--accent-h);
 }
 
+/* Home travel toggle button */
+.btn-home-travel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.45;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn-home-travel.is-on {
+  opacity: 1;
+  border-color: var(--accent);
+  color: var(--accent-h);
+}
+.btn-home-travel.hidden { display: none; }
+.btn-home-travel:hover { opacity: 1; }
+
+/* Calendar zoom slider */
+.cal-zoom-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.cal-zoom-control.hidden { display: none; }
+.zoom-icon {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  user-select: none;
+  width: 12px;
+  text-align: center;
+}
+#cal-zoom {
+  width: 90px;
+  height: 4px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 /* Home button */
 .btn-home {
   display: flex;
@@ -623,6 +669,17 @@ html, body {
   letter-spacing: 0.05em;
 }
 
+/* ── Event card resize handle ── */
+.resize-handle {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+  border-radius: 0 0 6px 6px;
+}
+
 /* ── Travel time indicator ── */
 .travel-indicator {
   position: absolute;
@@ -648,6 +705,11 @@ html, body {
   color: var(--text-muted);
   white-space: nowrap;
   box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+
+/* Home distance badge — slightly muted vs between-event badges */
+.travel-badge-home {
+  opacity: 0.85;
 }
 
 /* Walk > 10 min: orange warning */
@@ -727,6 +789,88 @@ html, body {
   font-weight: 500;
 }
 
+/* ── Flight blocks & grayout ── */
+.flight-grayout {
+  position: absolute;
+  top: var(--day-header-h);
+  left: 0; right: 0;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    rgba(128,128,128,0.07) 6px,
+    rgba(128,128,128,0.07) 12px
+  );
+  border-bottom: 1px dashed var(--border);
+  pointer-events: none;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 4px;
+}
+.flight-grayout-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.5;
+  padding: 0 8px;
+  width: 100%;
+  text-align: center;
+}
+.flight-card {
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--surface2),
+    var(--surface2) 5px,
+    color-mix(in srgb, var(--surface2) 80%, var(--accent) 20%) 5px,
+    color-mix(in srgb, var(--surface2) 80%, var(--accent) 20%) 10px
+  ) !important;
+  border-left: 3px solid var(--accent) !important;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.9;
+}
+.flight-card:hover { opacity: 1; }
+
+/* ── Flight modal ── */
+#flight-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  width: min(480px, 95vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+}
+.flt-results {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.flt-result-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 2px 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.flt-result-item:hover { border-color: var(--accent); }
+.flt-result-item.selected { border-color: var(--accent); background: var(--accent-dim); }
+.flt-result-num    { font-weight: 700; font-size: 13px; color: var(--text); grid-column: 1; grid-row: 1; }
+.flt-result-route  { font-size: 13px; font-weight: 600; color: var(--text); grid-column: 2; grid-row: 1; }
+.flt-result-times  { font-size: 11px; color: var(--text-muted); grid-column: 2; grid-row: 2; }
+.flt-result-airline { font-size: 11px; color: var(--text-muted); grid-column: 1 / -1; grid-row: 2; }
+
 /* ── Closed badge on event cards ── */
 .evt-closed-badge {
   display: inline-block;
@@ -767,7 +911,8 @@ html, body {
 
 /* ── Modals ── */
 #modal-overlay,
-#home-modal-overlay {
+#home-modal-overlay,
+#flight-modal-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.65);
   display: flex; align-items: center; justify-content: center;
@@ -775,7 +920,8 @@ html, body {
   z-index: 9999;
 }
 #modal-overlay.hidden,
-#home-modal-overlay.hidden { display: none !important; }
+#home-modal-overlay.hidden,
+#flight-modal-overlay.hidden { display: none !important; }
 
 #modal {
   background: var(--surface);

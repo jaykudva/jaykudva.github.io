@@ -264,6 +264,106 @@ app.get('/api/place', async (req, res) => {
   }
 });
 
-app.listen(PORT, () =>
-  console.log(`Trip API server listening on http://localhost:${PORT}`)
-);
+// Convert AeroDataBox local time string "2026-04-22 15:00-05:00" → ISO 8601
+// Handles formats: "2026-04-22 15:00-05:00", "2026-04-22 15:00Z", "2026-04-22 15:00"
+function aeroToIso(str) {
+  if (!str) return null;
+  return str.trim().replace(' ', 'T');
+}
+
+// Pick the best available local time string from an AeroDataBox endpoint object.
+// New API format: times are nested under scheduledTime / revisedTime / predictedTime
+// Old format (date-specific endpoint): flat scheduledTimeLocal / revisedTimeLocal
+function aeroTime(endpoint) {
+  return endpoint?.revisedTime?.local
+      ?? endpoint?.scheduledTime?.local
+      ?? endpoint?.predictedTime?.local
+      ?? endpoint?.revisedTimeLocal
+      ?? endpoint?.scheduledTimeLocal
+      ?? null;
+}
+
+// GET /api/flight?number=VB101&date=2026-04-22
+// Returns { flights: [{ number, airline, departure, arrival }] }
+app.get('/api/flight', async (req, res) => {
+  const { number, date } = req.query;
+  if (!number || !date) return res.status(400).json({ error: 'Missing number or date' });
+
+  const key = process.env.AERODATABOX_RAPIDAPI_KEY;
+  if (!key) return res.status(500).json({ error: 'AERODATABOX_RAPIDAPI_KEY not set — add it to trip/server/.env' });
+
+  const flightNum = number.replace(/\s+/g, '').toUpperCase();
+  // Use the "nearest day" endpoint which returns full time data (scheduledTime.local).
+  const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNum)}` +
+              `?withAircraftImage=false&withLocation=false&withFlightPlan=false`;
+
+  try {
+    const upstream = await fetch(url, {
+      headers: {
+        'X-RapidAPI-Key': key,
+        'X-RapidAPI-Host': 'aerodatabox.p.rapidapi.com',
+      },
+    });
+
+    if (!upstream.ok) {
+      const text = await upstream.text();
+      console.error('[flight] API error:', upstream.status, text.slice(0, 200));
+      return res.status(upstream.status).json({ error: `Flight API error (${upstream.status})`, detail: text.slice(0, 200) });
+    }
+
+    const data = await upstream.json();
+    if (!Array.isArray(data) || data.length === 0) {
+      return res.status(404).json({ error: 'No flights found for that number' });
+    }
+
+    // Filter to results that match the requested date (by departure or arrival local date).
+    // If none match exactly, return all results so the user can pick.
+    const matchDate = (f) => {
+      const depLocal = aeroTime(f.departure);
+      const arrLocal = aeroTime(f.arrival);
+      return (depLocal && depLocal.startsWith(date)) || (arrLocal && arrLocal.startsWith(date));
+    };
+    const filtered = data.filter(matchDate);
+    const results  = filtered.length > 0 ? filtered : data;
+
+    const flights = results.map(f => {
+      const depTime = aeroToIso(aeroTime(f.departure));
+      const arrTime = aeroToIso(aeroTime(f.arrival));
+      console.log(`[flight]   leg: ${f.departure?.airport?.iata} ${depTime} → ${f.arrival?.airport?.iata} ${arrTime}`);
+      return {
+        number:  f.number  || flightNum,
+        airline: f.airline?.name || 'Unknown Airline',
+        departure: {
+          iata: f.departure?.airport?.iata  ?? null,
+          name: f.departure?.airport?.municipalityName || f.departure?.airport?.name || null,
+          time: depTime,
+          tz:   f.departure?.airport?.timeZone ?? null,
+          lat:  f.departure?.airport?.location?.lat ?? null,
+          lng:  f.departure?.airport?.location?.lon ?? null,
+        },
+        arrival: {
+          iata: f.arrival?.airport?.iata  ?? null,
+          name: f.arrival?.airport?.municipalityName || f.arrival?.airport?.name || null,
+          time: arrTime,
+          tz:   f.arrival?.airport?.timeZone ?? null,
+          lat:  f.arrival?.airport?.location?.lat ?? null,
+          lng:  f.arrival?.airport?.location?.lon ?? null,
+        },
+      };
+    });
+
+    console.log(`[flight] ${flightNum} ${date}: ${flights.length} result(s)`);
+    res.json({ flights });
+  } catch (err) {
+    console.error('[flight] error:', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// Export for Vercel serverless; also listen directly when run via `node server.js`
+module.exports = app;
+if (require.main === module) {
+  app.listen(PORT, () =>
+    console.log(`Trip API server listening on http://localhost:${PORT}`)
+  );
+}
