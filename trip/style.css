@@ -1059,6 +1059,10 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
+/* ── Logout button ── */
+.btn-logout { padding: 4px 8px; font-size: 14px; opacity: 0.5; }
+.btn-logout:hover { opacity: 1; }
+
 /* ── Password gate ── */
 #password-overlay {
   position: fixed;

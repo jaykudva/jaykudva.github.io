@@ -39,7 +39,7 @@ function uid()  { return Math.random().toString(36).slice(2, 10) + Date.now().to
 // ── API sync & auth ──────────────────────────────────────────────────────────
 
 const SYNC_INTERVAL_MS = 15_000;
-let syncPassword   = sessionStorage.getItem('trip-password') || '';
+let syncPassword   = localStorage.getItem('trip-password') || '';
 let lastSyncedAt   = null;   // ISO string of the server's last updated_at we've applied
 let syncSaveTimer  = null;
 let syncPollTimer  = null;
@@ -125,7 +125,7 @@ function startSyncPoll() {
 
 function showPasswordGate() {
   syncPassword = '';
-  sessionStorage.removeItem('trip-password');
+  localStorage.removeItem('trip-password');
   document.getElementById('password-overlay').classList.remove('hidden');
   setTimeout(() => document.getElementById('password-input').focus(), 50);
 }
@@ -153,7 +153,7 @@ async function submitPassword() {
       return;
     }
     syncPassword = pw;
-    sessionStorage.setItem('trip-password', pw);
+    localStorage.setItem('trip-password', pw);
     const { state: remote, updatedAt } = await res.json();
     if (remote) {
       state = remote;
@@ -162,7 +162,9 @@ async function submitPassword() {
     }
     lastSyncedAt = updatedAt;
     hidePasswordGate();
+    updateHomeButton();
     render();
+    scrollToHour(17);
     startSyncPoll();
   } catch {
     errEl.textContent = 'Could not reach the server. Try again.';
@@ -2053,9 +2055,6 @@ btnTheme.addEventListener('click', () => {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 applyTheme();
-updateHomeButton();
-render();
-scrollToHour(17);
 
 // Wire up sync status element and password gate events
 syncStatusEl = document.getElementById('sync-status');
@@ -2064,12 +2063,24 @@ document.getElementById('password-submit').addEventListener('click', submitPassw
 document.getElementById('password-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') submitPassword();
 });
+document.getElementById('btn-logout').addEventListener('click', () => {
+  localStorage.removeItem('trip-password');
+  syncPassword = '';
+  clearInterval(syncPollTimer);
+  showPasswordGate();
+});
 
-// Bootstrap: if we have a stored password try to load from API, otherwise show gate
+// Bootstrap: render nothing until auth confirmed
 (async () => {
   if (syncPassword) {
     const ok = await syncLoad();
-    if (ok) { render(); startSyncPoll(); }
+    if (ok) {
+      updateHomeButton();
+      render();
+      scrollToHour(17);
+      startSyncPoll();
+    }
+    // if not ok, syncLoad already called showPasswordGate()
   } else {
     showPasswordGate();
   }
