@@ -1,9 +1,12 @@
 require('dotenv').config();
-const express = require('express');
-const cors    = require('cors');
+const express               = require('express');
+const cors                  = require('cors');
+const { createClient }      = require('@supabase/supabase-js');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
+
+app.use(express.json());
 
 // Allow the static frontend (any localhost port + future prod domain)
 app.use(cors({
@@ -275,11 +278,11 @@ function aeroToIso(str) {
 // New API format: times are nested under scheduledTime / revisedTime / predictedTime
 // Old format (date-specific endpoint): flat scheduledTimeLocal / revisedTimeLocal
 function aeroTime(endpoint) {
-  return endpoint?.revisedTime?.local
-      ?? endpoint?.scheduledTime?.local
+  return endpoint?.scheduledTime?.local
+      ?? endpoint?.scheduledTimeLocal
+      ?? endpoint?.revisedTime?.local
       ?? endpoint?.predictedTime?.local
       ?? endpoint?.revisedTimeLocal
-      ?? endpoint?.scheduledTimeLocal
       ?? null;
 }
 
@@ -358,6 +361,57 @@ app.get('/api/flight', async (req, res) => {
     console.error('[flight] error:', err.message);
     res.status(502).json({ error: err.message });
   }
+});
+
+// ── Trip state persistence (Supabase) ────────────────────────────────────────
+
+function getSupabase() {
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
+
+function requirePassword(req, res, next) {
+  const password = process.env.TRIP_PASSWORD;
+  if (!password) return next();
+  if (req.headers['x-trip-password'] !== password) {
+    return res.status(401).json({ error: 'Wrong password' });
+  }
+  next();
+}
+
+// GET /api/state — fetch persisted trip state
+app.get('/api/state', requirePassword, async (req, res) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(500).json({ error: 'Database not configured' });
+
+  const { data, error } = await sb
+    .from('trip_state')
+    .select('state, updated_at')
+    .eq('id', 'main')
+    .maybeSingle();
+
+  if (error) return res.status(502).json({ error: error.message });
+  res.json({ state: data?.state ?? null, updatedAt: data?.updated_at ?? null });
+});
+
+// PUT /api/state — save trip state
+app.put('/api/state', requirePassword, async (req, res) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(500).json({ error: 'Database not configured' });
+
+  const { state } = req.body;
+  if (!state) return res.status(400).json({ error: 'Missing state' });
+
+  const { data, error } = await sb
+    .from('trip_state')
+    .upsert({ id: 'main', state, updated_at: new Date().toISOString() })
+    .select('updated_at')
+    .single();
+
+  if (error) return res.status(502).json({ error: error.message });
+  res.json({ ok: true, updatedAt: data.updated_at });
 });
 
 // Export for Vercel serverless; also listen directly when run via `node server.js`

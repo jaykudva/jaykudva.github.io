@@ -1059,5 +1059,35 @@ html, body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
 
+/* ── Password gate ── */
+#password-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+#password-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 32px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#password-modal h3 { margin: 0; font-size: 20px; }
+#password-modal p  { margin: 0; font-size: 14px; color: var(--text-muted); }
+.password-error    { font-size: 13px; color: var(--danger); }
+
+/* ── Sync status ── */
+.sync-status       { font-size: 12px; color: var(--text-muted); min-width: 60px; }
+.sync-status.saved { color: #4caf50; }
+.sync-status.error { color: var(--danger); }
+
 /* ── Util ── */
 .hidden { display: none !important; }

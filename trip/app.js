@@ -30,8 +30,147 @@ let state = (() => {
   } catch { return defaultState(); }
 })();
 
-function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleSyncSave();
+}
 function uid()  { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+
+// ── API sync & auth ──────────────────────────────────────────────────────────
+
+const SYNC_INTERVAL_MS = 15_000;
+let syncPassword   = sessionStorage.getItem('trip-password') || '';
+let lastSyncedAt   = null;   // ISO string of the server's last updated_at we've applied
+let syncSaveTimer  = null;
+let syncPollTimer  = null;
+let syncStatusEl   = null;   // set after DOM ready
+
+function apiHeaders() {
+  return { 'Content-Type': 'application/json', 'X-Trip-Password': syncPassword };
+}
+
+function setSyncStatus(msg, cls = '') {
+  if (!syncStatusEl) return;
+  syncStatusEl.textContent = msg;
+  syncStatusEl.className   = 'sync-status' + (cls ? ' ' + cls : '');
+  if (cls === 'saved') setTimeout(() => { if (syncStatusEl.textContent === msg) syncStatusEl.textContent = ''; }, 2500);
+}
+
+async function syncLoad() {
+  try {
+    const res = await fetch(`${API_BASE}/api/state`, { headers: apiHeaders() });
+    if (res.status === 401) { showPasswordGate(); return false; }
+    if (!res.ok) return false;
+    const { state: remote, updatedAt } = await res.json();
+    if (remote) {
+      state = remote;
+      if (!state.flights) state.flights = [];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+    lastSyncedAt = updatedAt;
+    return true;
+  } catch { return false; }
+}
+
+async function syncSave() {
+  clearTimeout(syncSaveTimer);
+  syncSaveTimer = null;
+  if (!syncPassword) return;
+  setSyncStatus('Saving…');
+  try {
+    const res = await fetch(`${API_BASE}/api/state`, {
+      method: 'PUT',
+      headers: apiHeaders(),
+      body: JSON.stringify({ state }),
+    });
+    if (res.status === 401) { showPasswordGate(); return; }
+    if (!res.ok) { setSyncStatus('Save failed', 'error'); return; }
+    const { updatedAt } = await res.json();
+    lastSyncedAt = updatedAt;
+    setSyncStatus('Saved', 'saved');
+  } catch { setSyncStatus('Save failed', 'error'); }
+}
+
+function scheduleSyncSave() {
+  clearTimeout(syncSaveTimer);
+  syncSaveTimer = setTimeout(syncSave, 1500);
+}
+
+async function syncPoll() {
+  if (!syncPassword) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/state`, { headers: apiHeaders() });
+    if (!res.ok) return;
+    const { state: remote, updatedAt } = await res.json();
+    if (remote && updatedAt && updatedAt !== lastSyncedAt) {
+      // Someone else saved — only accept if we're not mid-edit
+      if (!syncSaveTimer) {
+        state = remote;
+        if (!state.flights) state.flights = [];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        lastSyncedAt = updatedAt;
+        render();
+        setSyncStatus('Updated', 'saved');
+      }
+    }
+  } catch { /* ignore poll errors */ }
+}
+
+function startSyncPoll() {
+  clearInterval(syncPollTimer);
+  syncPollTimer = setInterval(syncPoll, SYNC_INTERVAL_MS);
+}
+
+// ── Password gate ─────────────────────────────────────────────────────────────
+
+function showPasswordGate() {
+  syncPassword = '';
+  sessionStorage.removeItem('trip-password');
+  document.getElementById('password-overlay').classList.remove('hidden');
+  setTimeout(() => document.getElementById('password-input').focus(), 50);
+}
+
+function hidePasswordGate() {
+  document.getElementById('password-overlay').classList.add('hidden');
+}
+
+async function submitPassword() {
+  const input = document.getElementById('password-input');
+  const errEl = document.getElementById('password-error');
+  const pw    = input.value.trim();
+  if (!pw) return;
+  const btn = document.getElementById('password-submit');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`${API_BASE}/api/state`, {
+      headers: { 'X-Trip-Password': pw },
+    });
+    if (res.status === 401) {
+      errEl.textContent = 'Wrong password. Try again.';
+      errEl.classList.remove('hidden');
+      input.value = '';
+      input.focus();
+      return;
+    }
+    syncPassword = pw;
+    sessionStorage.setItem('trip-password', pw);
+    const { state: remote, updatedAt } = await res.json();
+    if (remote) {
+      state = remote;
+      if (!state.flights) state.flights = [];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+    lastSyncedAt = updatedAt;
+    hidePasswordGate();
+    render();
+    startSyncPoll();
+  } catch {
+    errEl.textContent = 'Could not reach the server. Try again.';
+    errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false;
+  }
+}
 
 // ── UI state (not persisted) ──────────────────────────────────────────────────
 
@@ -75,10 +214,12 @@ function getDayLabel(day) {
 }
 
 function formatHour(h) {
-  if (h === 0)  return '12 AM';
-  if (h === 12) return '12 PM';
-  if (h > 24)   return formatHour(h - 24);
-  return h < 12 ? `${h} AM` : `${h - 12} PM`;
+  if (h > 24) return formatHour(h - 24);
+  const whole = Math.floor(h);
+  const mins  = (h % 1 >= 0.5) ? ':30' : '';
+  if (whole === 0)  return `12${mins} AM`;
+  if (whole === 12) return `12${mins} PM`;
+  return whole < 12 ? `${whole}${mins} AM` : `${whole - 12}${mins} PM`;
 }
 
 function getHourHeight() {
@@ -318,9 +459,12 @@ function makeDayCol(day) {
   });
 
   // Place events — only those with a time; day+no-time appear in the unscheduled bar
-  state.events.filter(e => e.day === day && e.hour != null).forEach(evt => {
-    const card = makeEventCard(evt);
-    positionCard(card, evt);
+  const timedEvents = state.events.filter(e => e.day === day && e.hour != null);
+  const layout      = computeDayLayout(timedEvents);
+  timedEvents.forEach(evt => {
+    const card              = makeEventCard(evt);
+    const { col: c, cols }  = layout.get(evt.id) || { col: 0, cols: 1 };
+    positionCard(card, evt, c, cols);
     col.appendChild(card);
   });
 
@@ -367,15 +511,55 @@ function makeDayCol(day) {
   return col;
 }
 
-function positionCard(card, evt) {
+// Compute side-by-side column layout for overlapping events in a day.
+// Returns Map<id, { col, cols }> where col is 0-based index and cols is total concurrent columns.
+function computeDayLayout(events) {
+  const sorted = [...events].sort((a, b) => a.hour - b.hour);
+  const colEnds = []; // colEnds[i] = end time of last event placed in column i
+  const result  = new Map();
+
+  for (const evt of sorted) {
+    const start = evt.hour;
+    const end   = start + (evt.duration || 1);
+    let c = colEnds.findIndex(e => e <= start);
+    if (c === -1) c = colEnds.length;
+    colEnds[c] = end;
+    result.set(evt.id, { col: c });
+  }
+
+  // For each event, cols = max(col index + 1) among all events that overlap it
+  for (const evt of sorted) {
+    const start = evt.hour;
+    const end   = start + (evt.duration || 1);
+    let maxCol  = result.get(evt.id).col;
+    for (const other of sorted) {
+      const os = other.hour;
+      const oe = os + (other.duration || 1);
+      if (os < end && oe > start) maxCol = Math.max(maxCol, result.get(other.id).col);
+    }
+    result.get(evt.id).cols = maxCol + 1;
+  }
+
+  return result;
+}
+
+function positionCard(card, evt, colIdx = 0, totalCols = 1) {
   if (evt.hour == null) return;
-  // CSS calc with var(--hour-height) so cards auto-reposition when the
-  // variable changes (e.g. on resize or unscheduled-bar toggle) without
-  // needing a full re-render.
   const offset = evt.hour - START_HOUR;
   const dur    = evt.duration || 1;
   card.style.top    = `calc(var(--day-header-h) + ${offset} * var(--hour-height))`;
   card.style.height = `calc(${dur} * var(--hour-height) - 4px)`;
+
+  if (totalCols > 1) {
+    const pct        = 100 / totalCols;
+    card.style.left  = `calc(${colIdx * pct}% + 2px)`;
+    card.style.width = `calc(${pct}% - 4px)`;
+    card.style.right = 'unset';
+  } else {
+    card.style.left  = '';
+    card.style.width = '';
+    card.style.right = '';
+  }
 }
 
 // Scroll the calendar so that `hour` is vertically centered in the viewport.
@@ -1341,7 +1525,9 @@ function populateDayOptions() {
 
 function populateTimeOptions() {
   evtTime.innerHTML = '<option value="">— no time —</option>';
-  HOURS.forEach(h => evtTime.appendChild(new Option(formatHour(h), h)));
+  for (let h = START_HOUR; h < START_HOUR + N_HOURS; h += 0.5) {
+    evtTime.appendChild(new Option(formatHour(h), h));
+  }
 }
 
 function openModal(id = null, prefill = {}) {
@@ -1870,3 +2056,21 @@ applyTheme();
 updateHomeButton();
 render();
 scrollToHour(17);
+
+// Wire up sync status element and password gate events
+syncStatusEl = document.getElementById('sync-status');
+
+document.getElementById('password-submit').addEventListener('click', submitPassword);
+document.getElementById('password-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitPassword();
+});
+
+// Bootstrap: if we have a stored password try to load from API, otherwise show gate
+(async () => {
+  if (syncPassword) {
+    const ok = await syncLoad();
+    if (ok) { render(); startSyncPoll(); }
+  } else {
+    showPasswordGate();
+  }
+})();
