@@ -287,7 +287,8 @@
       <h3>Group Trip</h3>
       <p>Enter the password to access the trip planner.</p>
       <div class="form-group">
-        <input id="password-input" type="password" placeholder="Password" autocomplete="current-password" />
+        <input type="text" name="fake-username" style="display:none" autocomplete="username" aria-hidden="true" />
+        <input id="password-input" type="password" placeholder="Password" autocomplete="new-password" />
       </div>
       <div id="password-error" class="password-error hidden"></div>
       <button id="password-submit" class="btn-primary" style="width:100%">Enter</button>

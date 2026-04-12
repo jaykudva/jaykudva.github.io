@@ -476,24 +476,44 @@ function makeDayCol(day) {
     const arrDay = flightDay(f);
     if (arrDay !== day) return;
 
-    const depHour = f.depHourCDMX;
-    const arrHour = f.arrHourCDMX;
+    const depHour       = f.depHourCDMX;
+    const arrHour       = f.arrHourCDMX;
     if (depHour == null || arrHour == null) return;
 
-    // Gray overlay before departure ("not in CDMX yet")
-    const greyHours = depHour - START_HOUR;
-    if (greyHours > 0) {
-      const grayout = document.createElement('div');
-      grayout.className = 'flight-grayout';
-      grayout.style.height = `calc(${greyHours} * var(--hour-height))`;
-      const lbl = document.createElement('div');
-      lbl.className = 'flight-grayout-label';
-      lbl.textContent = 'Not in CDMX';
-      grayout.appendChild(lbl);
-      col.appendChild(grayout);
+    // A departure flight leaves FROM the trip city; an arrival flight lands there.
+    const isTripDeparture = f.departure?.tz === TRIP_TZ;
+
+    if (isTripDeparture) {
+      // Block out everything AFTER departure — they've left
+      const greyStart = depHour - START_HOUR;
+      const greyHours = N_HOURS - greyStart;
+      if (greyHours > 0) {
+        const grayout = document.createElement('div');
+        grayout.className = 'flight-grayout';
+        grayout.style.top    = `calc(var(--day-header-h) + ${greyStart} * var(--hour-height))`;
+        grayout.style.height = `calc(${greyHours} * var(--hour-height))`;
+        const lbl = document.createElement('div');
+        lbl.className = 'flight-grayout-label';
+        lbl.textContent = 'Left CDMX';
+        grayout.appendChild(lbl);
+        col.appendChild(grayout);
+      }
+    } else {
+      // Block out everything BEFORE arrival — not in CDMX yet
+      const greyHours = depHour - START_HOUR;
+      if (greyHours > 0) {
+        const grayout = document.createElement('div');
+        grayout.className = 'flight-grayout';
+        grayout.style.height = `calc(${greyHours} * var(--hour-height))`;
+        const lbl = document.createElement('div');
+        lbl.className = 'flight-grayout-label';
+        lbl.textContent = 'Not in CDMX';
+        grayout.appendChild(lbl);
+        col.appendChild(grayout);
+      }
     }
 
-    // Flight card
+    // Flight card — spans dep→arr regardless of direction
     const dur = Math.max(0.5, arrHour - depHour);
     const fcard = document.createElement('div');
     fcard.className = 'event-card flight-card';
@@ -901,23 +921,25 @@ async function renderTravelTimes() {
     const col = daysArea.querySelector(`.day-col[data-day="${day}"]`);
     if (!col) continue;
 
-    // Include flight arrivals (with airport coords) as virtual events so the
-    // home-distance system automatically shows airport → home travel time.
-    const flightArrivals = (state.flights || [])
-      .filter(f => flightDay(f) === day
-               && flightMatchesView(f)
-               && f.arrival?.lat != null && f.arrival?.lng != null
-               && f.arrHourCDMX != null)
-      .map(f => ({
-        id:       `__flight_${f.id}`,
-        hour:     f.arrHourCDMX,
-        duration: 0,
-        location: { lat: f.arrival.lat, lng: f.arrival.lng },
-      }));
+    // Inject flight virtual events for home-travel distance calculation.
+    // Arrival flights  → virtual event at arrival airport (→ show airport→home pill).
+    // Departure flights → virtual event at departure airport (→ show home→airport pill).
+    const flightVirtualEvents = (state.flights || [])
+      .filter(f => flightDay(f) === day && flightMatchesView(f))
+      .flatMap(f => {
+        const isTripDeparture = f.departure?.tz === TRIP_TZ;
+        if (isTripDeparture) {
+          if (f.departure?.lat == null || f.depHourCDMX == null) return [];
+          return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: f.depHourCDMX, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
+        } else {
+          if (f.arrival?.lat == null || f.arrHourCDMX == null) return [];
+          return [{ id: `__flight_${f.id}`, _isDep: false, hour: f.arrHourCDMX, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
+        }
+      });
 
     const dayEvents = [
       ...state.events.filter(e => e.day === day && e.hour != null && e.location?.lat != null),
-      ...flightArrivals,
+      ...flightVirtualEvents,
     ].sort((a, b) => a.hour - b.hour);
 
     for (let i = 0; i < dayEvents.length - 1; i++) {
@@ -968,7 +990,8 @@ async function renderTravelTimes() {
     for (const evt of dayEvents) {
       if (signal.aborted) return;
 
-      const isFlightArrival = evt.id.startsWith('__flight_');
+      const isFlightArrival  = evt.id.startsWith('__flight_') && !evt._isDep;
+      const isFlightDeparture = evt._isDep === true;
 
       // Does any other event end within 30 min before this one starts?
       const hasPred = dayEvents.some(o =>
@@ -979,8 +1002,8 @@ async function renderTravelTimes() {
         o.id !== evt.id && (o.hour - (evt.hour + (evt.duration ?? 1))) <= 0.5 && o.hour >= evt.hour
       );
 
-      // Don't show "🏠 → airport" for inbound flights — the grayout already
-      // communicates they're coming from outside, and you're not leaving from home.
+      // Inbound arrivals: skip "🏠 →" (you just landed, you're not leaving from home)
+      // Outbound departures: skip "→ 🏠" (you're leaving the city, not going back home)
       if (!hasPred && !isFlightArrival) {
         const info = await getDrivingInfo(home, evt.location, signal);
         if (info && !signal.aborted) {
@@ -995,7 +1018,7 @@ async function renderTravelTimes() {
         }
       }
 
-      if (!hasSucc) {
+      if (!hasSucc && !isFlightDeparture) {
         if (signal.aborted) return;
         const info = await getDrivingInfo(evt.location, home, signal);
         if (info && !signal.aborted) {
@@ -2006,8 +2029,8 @@ fltSave.addEventListener('click', () => {
   const entry = {
     id:          fltEditingId || uid(),
     date:        fltDate.value,
-    people,
     ...fltSelectedResult,
+    people,          // after spread so chip selection always wins
     depHourCDMX: depCDMX,
     arrHourCDMX: arrHour,   // arrival time input is already in CDMX
   };
