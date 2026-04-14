@@ -42,7 +42,13 @@ const SYNC_INTERVAL_MS = 15_000;
 const PASSWORD_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 function loadStoredPassword() {
   const pw  = localStorage.getItem('trip-password') || '';
-  const ts  = parseInt(localStorage.getItem('trip-password-ts') || '0', 10);
+  const tsRaw = localStorage.getItem('trip-password-ts');
+  // If password exists but no timestamp, back-fill now so the session stays valid
+  if (pw && !tsRaw) {
+    localStorage.setItem('trip-password-ts', Date.now().toString());
+    return pw;
+  }
+  const ts = parseInt(tsRaw || '0', 10);
   if (pw && Date.now() - ts < PASSWORD_TTL_MS) return pw;
   if (pw) { localStorage.removeItem('trip-password'); localStorage.removeItem('trip-password-ts'); }
   return '';
@@ -2155,6 +2161,7 @@ document.getElementById('btn-logout').addEventListener('click', () => {
   if (syncPassword) {
     const ok = await syncLoad();
     if (ok) {
+      hidePasswordGate();
       updateHomeButton();
       render();
       scrollToHour(17);
