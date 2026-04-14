@@ -385,8 +385,7 @@ function updateHourHeight() {
   const pct = parseInt(calZoomEl.value, 10) / 100;
   const hh  = minHH + pct * (maxHH - minHH);
 
-  // Scroll only when zoomed in beyond the point of fitting everything
-  calScroll.style.overflowY = hh > usable / N_HOURS + 0.5 ? 'auto' : 'hidden';
+  calScroll.style.overflowY = 'auto';
 
   document.documentElement.style.setProperty('--hour-height', hh + 'px');
 }
@@ -918,7 +917,11 @@ function makeHomeTravelIndicator(col, key, topOffset, labelHtml, warn, evtId) {
   ind.className = 'travel-indicator';
   ind.dataset.travelKey = key;
   ind.style.top = `calc(var(--day-header-h) + ${topOffset} * var(--hour-height) - 10px)`;
-  if (evtId) matchCardHorizPos(ind, col, evtId);
+  if (evtId) {
+    matchCardHorizPos(ind, col, evtId);
+    const evtObj = [...(state.events || [])].find(e => e.id === evtId);
+    if (evtObj && (evtObj.duration ?? 1) < 1) ind.dataset.compact = '1';
+  }
   const bdg = document.createElement('span');
   bdg.className = `travel-badge travel-badge-home${warn ? ' travel-badge-warn' : ''}`;
   bdg.innerHTML = labelHtml;
@@ -929,13 +932,22 @@ function makeHomeTravelIndicator(col, key, topOffset, labelHtml, warn, evtId) {
 const OSRM_CACHE_KEY = 'trip-osrm-cache';
 
 function osrmCache() {
-  try { return JSON.parse(sessionStorage.getItem(OSRM_CACHE_KEY)) || {}; }
+  try { return JSON.parse(localStorage.getItem(OSRM_CACHE_KEY)) || {}; }
   catch { return {}; }
 }
 function osrmCacheSet(key, val) {
   const c = osrmCache(); c[key] = val;
-  sessionStorage.setItem(OSRM_CACHE_KEY, JSON.stringify(c));
+  try { localStorage.setItem(OSRM_CACHE_KEY, JSON.stringify(c)); } catch {}
 }
+// Purge any approximate (Haversine fallback) entries saved by older code
+// so they get retried against the real GraphHopper API.
+(function purgeApproxCache() {
+  const c = osrmCache();
+  const cleaned = Object.fromEntries(Object.entries(c).filter(([, v]) => !v.approx));
+  if (Object.keys(cleaned).length !== Object.keys(c).length) {
+    try { localStorage.setItem(OSRM_CACHE_KEY, JSON.stringify(cleaned)); } catch {}
+  }
+})();
 
 // Straight-line distance fallback (Haversine), used when OSRM times out.
 function haversineKm(from, to) {
@@ -948,10 +960,31 @@ function haversineKm(from, to) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Abortable sleep — rejects with AbortError if signal fires during the wait.
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => { clearTimeout(t); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+  });
+}
+
+// Counts uncached API calls in the current renderTravelTimes pass —
+// used to stagger requests across 5 seconds.
+let _routeCallCount = 0;
+const ROUTE_STAGGER_MS = 125; // 40 calls × 125 ms ≈ 5 s
+
 async function getDrivingInfo(from, to, signal) {
   const key = `${from.lat.toFixed(5)},${from.lng.toFixed(5)}->${to.lat.toFixed(5)},${to.lng.toFixed(5)}`;
   const cached = osrmCache()[key];
   if (cached) return cached;
+
+  // Stagger uncached requests: each one waits an extra 125 ms beyond the last.
+  const delay = _routeCallCount++ * ROUTE_STAGGER_MS;
+  if (delay > 0) {
+    try { await sleep(delay, signal); } catch { return null; }
+  }
+  if (signal?.aborted) return null;
 
   try {
     const url = `${API_BASE}/api/route?fromLat=${from.lat}&fromLng=${from.lng}&toLat=${to.lat}&toLng=${to.lng}`;
@@ -963,14 +996,12 @@ async function getDrivingInfo(from, to, signal) {
     return data;
   } catch (err) {
     if (err.name === 'AbortError') return null;
-    // Backend unreachable — fall back to Haversine estimate
+    // Backend unreachable — fall back to Haversine (not cached so it retries next load)
     const distKm   = haversineKm(from, to) * 1.35;
     const walkMin  = Math.round(distKm / 4.5 * 60);
     const driveMin = Math.round(distKm / 25 * 60);
-    const result   = { distKm, walkMin, driveMin, approx: true };
     console.log(`[travel] haversine fallback ${key} → ${distKm.toFixed(2)}km | walk ${walkMin}m | drive ${driveMin}m`);
-    osrmCacheSet(key, result);
-    return result;
+    return { distKm, walkMin, driveMin, approx: true };
   }
 }
 
@@ -982,6 +1013,7 @@ async function renderTravelTimes() {
   if (_travelAbort) _travelAbort.abort();
   _travelAbort = new AbortController();
   const signal = _travelAbort.signal;
+  _routeCallCount = 0; // reset stagger counter for this render pass
 
   const n = getDayCount();
   if (n === 0) return;
@@ -1043,6 +1075,7 @@ async function renderTravelTimes() {
       indicator.className = 'travel-indicator';
       indicator.dataset.travelKey = existingKey;
       indicator.style.top = `calc(var(--day-header-h) + ${midOffset} * var(--hour-height) - 10px)`;
+      if ((a.duration ?? 1) < 1 || (b.duration ?? 1) < 1) indicator.dataset.compact = '1';
       matchCardHorizPos(indicator, col, a.id);
 
       const badge = document.createElement('span');
@@ -1267,6 +1300,46 @@ function renderMap() {
 
     marker.addTo(leafletMap);
     mapMarkers.push(marker);
+  });
+
+  // ── Flight airport markers ──────────────────────────────────────────────────
+  (state.flights || []).forEach(f => {
+    if (!flightMatchesView(f)) return;
+    const fDay = flightDay(f);
+    if (mapDayFilter !== null && fDay !== mapDayFilter) return;
+
+    const isTripDeparture = f.departure?.tz === TRIP_TZ;
+
+    // Only show the trip-city airport: departure airport for outbound, arrival for inbound.
+    // This keeps JFK/etc off the map since the trip is in CDMX.
+    const pts = [];
+    if (isTripDeparture && f.departure?.lat != null)
+      pts.push({ airport: f.departure, label: `✈ Departs ${f.departure.iata}` });
+    else if (!isTripDeparture && f.arrival?.lat != null)
+      pts.push({ airport: f.arrival, label: `✈ Arrives ${f.arrival.iata}` });
+
+    pts.forEach(({ airport, label }) => {
+      const icon = L.divIcon({
+        html: `<div style="width:28px;height:28px;border-radius:50%;background:#475569;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;font-size:13px">✈</div>`,
+        className: '',
+        iconSize:   [28, 28],
+        iconAnchor: [14, 14],
+        popupAnchor:[0, -17],
+      });
+      const m = L.marker([airport.lat, airport.lng], { icon });
+      const dayLbl = fDay != null ? getDayLabel(fDay) : null;
+      const dayStr = dayLbl ? `Day ${dayLbl.num} · ${dayLbl.dow} ${dayLbl.date}` : '';
+      const people = (f.people || []).map(p => PEOPLE_LABEL[p] || p).join(', ');
+      m.bindPopup(`
+        <div class="map-popup-title">${label}</div>
+        <div class="map-popup-meta">
+          ${f.number}${dayStr ? ' · ' + dayStr : ''}
+          ${people ? '<br>' + people : ''}
+        </div>
+      `);
+      m.addTo(leafletMap);
+      mapMarkers.push(m);
+    });
   });
 
   const hasAnyMarker = mapMarkers.length > 0;

@@ -1136,3 +1136,95 @@ body.is-dragging .travel-indicator {
 
 /* ── Util ── */
 .hidden { display: none !important; }
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  :root {
+    --header-h:     96px;
+    --filter-bar-h: 40px;
+    --hour-height:  56px;
+    --gutter-w:     44px;
+    --day-header-h: 46px;
+  }
+
+  /* Two-row header */
+  #main-header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 6px;
+    row-gap: 0;
+  }
+  /* Row 1: name + tabs + add-event */
+  .trip-name-input {
+    font-size: 15px;
+    width: 130px;
+    order: 1;
+  }
+  .header-tabs   { order: 2; margin-left: auto; }
+  #btn-add-event { order: 3; padding: 6px 12px; font-size: 12px; }
+  /* Row 2: dates + utility, smaller */
+  .header-dates  { order: 4; flex: 0 0 auto; width: 100%; padding: 4px 0 2px; gap: 6px; }
+  .header-dates input[type="date"] { font-size: 12px; padding: 4px 7px; }
+  #sync-status   { display: none; }
+  #btn-logout    { order: 5; padding: 4px 6px; font-size: 12px; }
+  #btn-theme     { order: 6; width: 28px; height: 28px; font-size: 13px; }
+  #btn-add-flight { display: none; } /* access via desktop */
+
+  /* Filter bar: scrollable row */
+  #filter-bar {
+    height: auto;
+    min-height: var(--filter-bar-h);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 4px 12px;
+    flex-wrap: nowrap;
+  }
+  #filter-bar::-webkit-scrollbar { display: none; }
+  .cal-zoom-control { display: flex; }
+  #cal-zoom { width: 70px; }
+  #map-legend { gap: 8px; }
+
+  /* Calendar: each day column fills viewport so you scroll right to see next day */
+  .day-col {
+    min-width: calc(100vw - var(--gutter-w) - 2px);
+  }
+
+  /* Unscheduled bar */
+  #unscheduled-bar { flex-shrink: 0; }
+
+  /* Modals: bottom sheet */
+  #modal-overlay,
+  #flight-modal-overlay,
+  #home-modal-overlay {
+    align-items: flex-end;
+  }
+  #modal,
+  #flight-modal,
+  #home-modal {
+    width: 100%;
+    max-width: 100%;
+    border-radius: 16px 16px 0 0;
+    max-height: 88vh;
+    padding: 20px 16px 32px;
+  }
+  /* Stack form rows vertically on narrow screens */
+  .form-row { flex-direction: column; gap: 10px; }
+  .fg-1, .fg-2 { flex: unset; }
+
+  /* Hide travel markers adjacent to compact (30-min) events — too cramped */
+  .travel-indicator[data-compact="1"] { display: none; }
+
+  /* Bigger tap targets for event cards */
+  .event-edit-btn { width: 26px; height: 26px; font-size: 13px; }
+
+  /* Map day strip: scrollable */
+  #map-day-strip {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+  }
+  #map-day-strip::-webkit-scrollbar { display: none; }
+}

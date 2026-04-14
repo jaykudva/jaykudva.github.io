@@ -20,6 +20,7 @@ app.use(cors({
 
 // GET /api/route?fromLat=&fromLng=&toLat=&toLng=
 // Returns { distKm, driveMin, walkMin }
+// Checks Supabase route_cache first; only calls GraphHopper on a cache miss.
 app.get('/api/route', async (req, res) => {
   const { fromLat, fromLng, toLat, toLng } = req.query;
 
@@ -27,8 +28,26 @@ app.get('/api/route', async (req, res) => {
     return res.status(400).json({ error: 'Missing coordinates' });
   }
 
-  const key = process.env.GRAPHHOPPER_API_KEY;
-  if (!key) return res.status(500).json({ error: 'GRAPHHOPPER_API_KEY not set' });
+  // Normalise to 5 decimal places to maximise cache hits
+  const cacheKey = `${parseFloat(fromLat).toFixed(5)},${parseFloat(fromLng).toFixed(5)}->${parseFloat(toLat).toFixed(5)},${parseFloat(toLng).toFixed(5)}`;
+
+  // ── Check Supabase cache ──────────────────────────────────────────────────
+  const sb = getSupabase();
+  if (sb) {
+    const { data: cached } = await sb
+      .from('route_cache')
+      .select('dist_km,drive_min,walk_min')
+      .eq('key', cacheKey)
+      .single();
+    if (cached) {
+      console.log('[route] cache hit:', cacheKey);
+      return res.json({ distKm: cached.dist_km, driveMin: cached.drive_min, walkMin: cached.walk_min });
+    }
+  }
+
+  // ── Call GraphHopper ──────────────────────────────────────────────────────
+  const ghKey = process.env.GRAPHHOPPER_API_KEY;
+  if (!ghKey) return res.status(500).json({ error: 'GRAPHHOPPER_API_KEY not set' });
 
   const url =
     `https://graphhopper.com/api/1/route` +
@@ -36,7 +55,7 @@ app.get('/api/route', async (req, res) => {
     `&point=${toLat},${toLng}` +
     `&profile=car` +
     `&locale=en` +
-    `&key=${key}`;
+    `&key=${ghKey}`;
 
   try {
     const upstream = await fetch(url);
@@ -49,7 +68,16 @@ app.get('/api/route', async (req, res) => {
     const path     = data.paths[0];
     const distKm   = path.distance / 1000;
     const driveMin = Math.round(path.time / 60000);
-    const walkMin  = Math.round((distKm / 4.5) * 60); // 4.5 km/h walking pace
+    const walkMin  = Math.round((distKm / 4.5) * 60);
+
+    // ── Save to Supabase cache (awaited — fire-and-forget dies in Vercel) ──
+    if (sb) {
+      const { error: cacheErr } = await sb
+        .from('route_cache')
+        .upsert({ key: cacheKey, dist_km: distKm, drive_min: driveMin, walk_min: walkMin });
+      if (cacheErr) console.warn('[route] cache write failed:', cacheErr.message);
+      else console.log('[route] cached:', cacheKey);
+    }
 
     res.json({ distKm, driveMin, walkMin });
   } catch (err) {
