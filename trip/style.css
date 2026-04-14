@@ -913,6 +913,13 @@ html, body {
   z-index: 1;
 }
 
+/* While dragging, disable pointer-events on cards so the day column receives
+   dragover/drop events even when hovering over an existing event card. */
+body.is-dragging .event-card,
+body.is-dragging .travel-indicator {
+  pointer-events: none;
+}
+
 /* ── Category colors ── */
 .cat-food          { border-left-color: var(--cat-food) !important; }
 .cat-activity      { border-left-color: var(--cat-activity) !important; }

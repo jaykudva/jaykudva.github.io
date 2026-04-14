@@ -453,12 +453,13 @@ function makeDayCol(day) {
     cell.className    = 'hour-cell';
     cell.dataset.day  = day;
     cell.dataset.hour = h;
-    cell.addEventListener('click',     onCellClick);
-    cell.addEventListener('dragover',  onDragOver);
-    cell.addEventListener('dragleave', onDragLeave);
-    cell.addEventListener('drop',      onDrop);
+    cell.addEventListener('click', onCellClick);
     col.appendChild(cell);
   });
+
+  col.addEventListener('dragover',  onDragOver);
+  col.addEventListener('dragleave', onDragLeave);
+  col.addEventListener('drop',      onDrop);
 
   // Place events — only those with a time; day+no-time appear in the unscheduled bar
   const timedEvents = state.events.filter(e => e.day === day && e.hour != null);
@@ -721,6 +722,8 @@ function makeEventCard(evt) {
   card.append(editBtn, titleEl, meta, resizeHandle);
   card.addEventListener('dragstart', onDragStart);
   card.addEventListener('dragend',   onDragEnd);
+  // Allow dropping onto occupied slots: pass dragover up to the day column.
+  card.addEventListener('dragover', e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
   return card;
 }
 
@@ -767,21 +770,37 @@ function renderUnscheduled() {
 
 // ── Drag & Drop ───────────────────────────────────────────────────────────────
 
-let drag = { id: null, placeholder: null };
+let drag = { id: null, placeholder: null, targetHour: null, targetDay: null };
+
+// Compute the snapped hour (0.5 increments) from a clientY position over a day column.
+function hourFromClientY(dayCol, clientY) {
+  const rect = dayCol.getBoundingClientRect();
+  const hh   = getHourHeight();
+  const relY = clientY - rect.top - getDayHeaderH();
+  const raw  = START_HOUR + relY / hh;
+  const snapped = Math.round(raw * 2) / 2; // snap to nearest 0.5 hr
+  return Math.max(START_HOUR, Math.min(END_HOUR - 0.5, snapped));
+}
 
 function onDragStart(e) {
   drag.id = e.currentTarget.dataset.id;
   e.currentTarget.classList.add('dragging');
   e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', drag.id);
   drag.placeholder = document.createElement('div');
   drag.placeholder.className = 'drop-placeholder';
+  // Defer pointer-events change — applying it synchronously during dragstart
+  // causes the browser to cancel the drag before it begins.
+  setTimeout(() => document.body.classList.add('is-dragging'), 0);
 }
 
 function onDragEnd(e) {
   e.currentTarget.classList.remove('dragging');
   drag.placeholder?.remove();
   drag.placeholder = null;
-  document.querySelectorAll('.hour-cell.drag-over').forEach(c => c.classList.remove('drag-over'));
+  drag.targetHour  = null;
+  drag.targetDay   = null;
+  document.body.classList.remove('is-dragging');
   document.querySelectorAll('.pool-area.drag-over').forEach(c => c.classList.remove('drag-over'));
   drag.id = null;
 }
@@ -790,17 +809,16 @@ function onDragOver(e) {
   e.preventDefault();
   e.dataTransfer.dropEffect = 'move';
 
-  const cell   = e.currentTarget;
-  const dayCol = cell.closest('.day-col');
-  if (!dayCol || !drag.placeholder) return;
+  const dayCol = e.currentTarget; // now on the col, not the cell
+  if (!drag.placeholder) return;
 
-  document.querySelectorAll('.hour-cell.drag-over').forEach(c => c.classList.remove('drag-over'));
-  cell.classList.add('drag-over');
+  const targetHour = hourFromClientY(dayCol, e.clientY);
+  drag.targetHour  = targetHour;
+  drag.targetDay   = parseInt(dayCol.dataset.day, 10);
 
-  const targetHour = parseInt(cell.dataset.hour, 10);
-  const evt        = state.events.find(ev => ev.id === drag.id);
-  const dur        = evt?.duration || 1;
-  const offset     = targetHour - START_HOUR;
+  const evt    = state.events.find(ev => ev.id === drag.id);
+  const dur    = evt?.duration || 1;
+  const offset = targetHour - START_HOUR;
 
   drag.placeholder.style.top    = `calc(var(--day-header-h) + ${offset} * var(--hour-height))`;
   drag.placeholder.style.height = `calc(${dur} * var(--hour-height) - 4px)`;
@@ -812,22 +830,24 @@ function onDragOver(e) {
 }
 
 function onDragLeave(e) {
-  if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.classList.remove('drag-over');
+  // Only clear if leaving the day column entirely
+  if (!e.currentTarget.contains(e.relatedTarget)) {
+    drag.placeholder?.remove();
+    drag.targetHour = null;
+    drag.targetDay  = null;
+  }
 }
 
 function onDrop(e) {
   e.preventDefault();
-  const cell   = e.currentTarget;
-  const dayCol = cell.closest('.day-col');
-  cell.classList.remove('drag-over');
   drag.placeholder?.remove();
   drag.placeholder = null;
-  if (!drag.id) return;
+  if (!drag.id || drag.targetHour == null) return;
 
   const evt = state.events.find(ev => ev.id === drag.id);
   if (!evt) return;
-  evt.day  = parseInt(dayCol.dataset.day, 10);
-  evt.hour = parseInt(cell.dataset.hour, 10);
+  evt.day  = drag.targetDay;
+  evt.hour = drag.targetHour;
   save();
   render();
 }
