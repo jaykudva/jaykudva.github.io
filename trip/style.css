@@ -13,11 +13,11 @@
   --accent-h:       #818cf8;
   --accent-dim:     rgba(99,102,241,0.12);
 
-  --cat-food:          #f97316;
-  --cat-activity:      #22c55e;
-  --cat-accommodation: #3b82f6;
-  --cat-transport:     #a855f7;
-  --cat-other:         #64748b;
+  --cat-activity:  #22c55e;
+  --cat-food:      #f97316;
+  --cat-drinks:    #a855f7;
+  --cat-shopping:  #3b82f6;
+  --cat-other:     #64748b;
 
   --header-h:      56px;
   --filter-bar-h:  36px;
@@ -842,13 +842,31 @@ html, body {
 .flight-card:hover { opacity: 1; }
 
 /* ── Bracket-tagged events ── */
-.bracket-note {
-  outline: 2px dashed rgba(234, 179, 8, 0.85);
-  outline-offset: -2px;
+.bracket-note::after,
+.bracket-tbd::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
 }
-.bracket-tbd {
-  outline: 2px dashed rgba(239, 68, 68, 0.85);
-  outline-offset: -2px;
+.bracket-note::after {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(234, 179, 8, 0.18) 0px,
+    rgba(234, 179, 8, 0.18) 4px,
+    transparent 4px,
+    transparent 12px
+  );
+}
+.bracket-tbd::after {
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(239, 68, 68, 0.18) 0px,
+    rgba(239, 68, 68, 0.18) 4px,
+    transparent 4px,
+    transparent 12px
+  );
 }
 
 /* ── Flight modal ── */
@@ -921,17 +939,17 @@ body.is-dragging .travel-indicator {
 }
 
 /* ── Category colors ── */
-.cat-food          { border-left-color: var(--cat-food) !important; }
-.cat-activity      { border-left-color: var(--cat-activity) !important; }
-.cat-accommodation { border-left-color: var(--cat-accommodation) !important; }
-.cat-transport     { border-left-color: var(--cat-transport) !important; }
-.cat-other         { border-left-color: var(--cat-other) !important; }
+.cat-activity { border-left-color: var(--cat-activity) !important; }
+.cat-food     { border-left-color: var(--cat-food) !important; }
+.cat-drinks   { border-left-color: var(--cat-drinks) !important; }
+.cat-shopping { border-left-color: var(--cat-shopping) !important; }
+.cat-other    { border-left-color: var(--cat-other) !important; }
 
-.cat-dot-food          { background: var(--cat-food); }
-.cat-dot-activity      { background: var(--cat-activity); }
-.cat-dot-accommodation { background: var(--cat-accommodation); }
-.cat-dot-transport     { background: var(--cat-transport); }
-.cat-dot-other         { background: var(--cat-other); }
+.cat-dot-activity { background: var(--cat-activity); }
+.cat-dot-food     { background: var(--cat-food); }
+.cat-dot-drinks   { background: var(--cat-drinks); }
+.cat-dot-shopping { background: var(--cat-shopping); }
+.cat-dot-other    { background: var(--cat-other); }
 
 /* ── Modals ── */
 #modal-overlay,

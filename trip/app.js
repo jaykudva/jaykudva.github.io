@@ -296,15 +296,17 @@ function flightMatchesView(flight) {
 // Returns 'group' | 'jay-abi' | 'austin-johanna'
 function eventScope(evt) {
   const people = evt.people || [];
-  if (people.length === 0) return 'group';
+  if (people.length === 0) return 'unassigned';
   const couples = new Set(people.map(p => COUPLE_MAP[p]).filter(Boolean));
   return couples.size > 1 ? 'group' : ([...couples][0] || 'group');
 }
 
 // Should this event show in the current viewFilter?
+// 'unassigned' events (no people) are solid in "all" view, faded in couple views.
 function eventMatchesView(evt) {
   if (viewFilter === 'all') return true;
   const scope = eventScope(evt);
+  if (scope === 'unassigned') return false;
   return scope === 'group' || scope === viewFilter;
 }
 
