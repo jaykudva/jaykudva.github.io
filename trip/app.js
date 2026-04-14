@@ -351,7 +351,7 @@ const modalCancel  = document.getElementById('modal-cancel');
 const modalSave    = document.getElementById('modal-save');
 const btnLocate    = document.getElementById('btn-locate');
 const locStatus    = document.getElementById('location-status');
-const peopleChips  = document.querySelectorAll('.person-chip');
+const peopleChips  = document.querySelectorAll('#people-chips .person-chip');
 
 // ── Layout / sizing ───────────────────────────────────────────────────────────
 
@@ -612,58 +612,73 @@ function makeEventCard(evt) {
   editBtn.textContent = '✎';
   editBtn.addEventListener('click', e => { e.stopPropagation(); openModal(evt.id); });
 
+  const isCompact = (evt.duration || 1) < 1;
+
   const titleEl = document.createElement('div');
-  titleEl.className   = 'event-card-title';
-  titleEl.textContent = evt.title;
+  titleEl.className = 'event-card-title';
+
+  const titleText = document.createElement('span');
+  titleText.textContent = evt.title;
+  titleEl.appendChild(titleText);
+
+  // For compact cards: show pin inline in the title row, skip the meta entirely
+  if (isCompact && evt.location?.lat != null) {
+    const pin = document.createElement('span');
+    pin.style.cssText = 'font-size:10px;opacity:0.6;margin-left:4px;flex-shrink:0;';
+    pin.textContent   = '📍';
+    titleEl.appendChild(pin);
+  }
 
   const meta = document.createElement('div');
   meta.className = 'event-card-meta';
 
-  if (evt.hour != null) {
-    const tEl = document.createElement('span');
-    tEl.className   = 'event-time-label';
-    tEl.textContent = `${formatHour(evt.hour)}–${formatHour(evt.hour + (evt.duration || 1))}`;
-    meta.appendChild(tEl);
-  }
+  if (!isCompact) {
+    if (evt.hour != null) {
+      const tEl = document.createElement('span');
+      tEl.className   = 'event-time-label';
+      tEl.textContent = `${formatHour(evt.hour)}–${formatHour(evt.hour + (evt.duration || 1))}`;
+      meta.appendChild(tEl);
+    }
 
-  if (evt.people && evt.people.length) {
-    const ppl = document.createElement('div');
-    ppl.className = 'event-people-initials';
-    evt.people.forEach(p => {
-      const init = document.createElement('div');
-      init.className = `person-initial pi-${p}`;
-      init.textContent = p[0].toUpperCase();
-      init.title = PEOPLE_LABEL[p] || p;
-      ppl.appendChild(init);
-    });
-    meta.appendChild(ppl);
-  }
+    if (evt.people && evt.people.length) {
+      const ppl = document.createElement('div');
+      ppl.className = 'event-people-initials';
+      evt.people.forEach(p => {
+        const init = document.createElement('div');
+        init.className = `person-initial pi-${p}`;
+        init.textContent = p[0].toUpperCase();
+        init.title = PEOPLE_LABEL[p] || p;
+        ppl.appendChild(init);
+      });
+      meta.appendChild(ppl);
+    }
 
-  if (evt.hasReservation) {
-    const res = document.createElement('span');
-    res.className   = 'event-has-res';
-    res.textContent = 'RES';
-    meta.appendChild(res);
-  }
+    if (evt.hasReservation) {
+      const res = document.createElement('span');
+      res.className   = 'event-has-res';
+      res.textContent = 'RES';
+      meta.appendChild(res);
+    }
 
-  if (evt.location?.lat != null) {
-    const pin = document.createElement('span');
-    pin.style.cssText = 'font-size:10px;opacity:0.6;';
-    pin.textContent   = '📍';
-    meta.appendChild(pin);
-  }
+    if (evt.location?.lat != null) {
+      const pin = document.createElement('span');
+      pin.style.cssText = 'font-size:10px;opacity:0.6;';
+      pin.textContent   = '📍';
+      meta.appendChild(pin);
+    }
 
-  // Show "Closed" badge if we have hours data and the event time falls outside them
-  if (evt.placeInfo?.hours?.periods?.length && evt.day != null && evt.hour != null && state.startDate) {
-    const base = parseLocalDate(state.startDate);
-    base.setDate(base.getDate() + evt.day - 1);
-    const dow    = base.getDay();
-    const status = hoursStatusAt(evt.placeInfo.hours.periods, dow, evt.hour);
-    if (!status.open) {
-      const badge = document.createElement('span');
-      badge.className   = 'evt-closed-badge';
-      badge.textContent = status.closedToday ? 'Closed today' : 'Closed';
-      meta.appendChild(badge);
+    // Show "Closed" badge if we have hours data and the event time falls outside them
+    if (evt.placeInfo?.hours?.periods?.length && evt.day != null && evt.hour != null && state.startDate) {
+      const base = parseLocalDate(state.startDate);
+      base.setDate(base.getDate() + evt.day - 1);
+      const dow    = base.getDay();
+      const status = hoursStatusAt(evt.placeInfo.hours.periods, dow, evt.hour);
+      if (!status.open) {
+        const badge = document.createElement('span');
+        badge.className   = 'evt-closed-badge';
+        badge.textContent = status.closedToday ? 'Closed today' : 'Closed';
+        meta.appendChild(badge);
+      }
     }
   }
 
@@ -1052,16 +1067,7 @@ filterBtns.forEach(btn => {
   btn.addEventListener('click', () => {
     viewFilter = btn.dataset.view;
     filterBtns.forEach(b => b.classList.toggle('active', b === btn));
-    // Re-apply filtered-out class without full re-render
-    document.querySelectorAll('.event-card[data-id]').forEach(card => {
-      const evt = state.events.find(e => e.id === card.dataset.id);
-      if (evt) card.classList.toggle('filtered-out', !eventMatchesView(evt));
-    });
-    document.querySelectorAll('.event-chip[data-id]').forEach(chip => {
-      const evt = state.events.find(e => e.id === chip.dataset.id);
-      if (evt) chip.classList.toggle('dimmed', !eventMatchesView(evt));
-    });
-    if (activeTab === 'map') renderMap();
+    render();
   });
 });
 
@@ -1461,7 +1467,7 @@ function renderPlaceInfoPanel() {
   let weekdayIdx     = null;
 
   const dayVal  = evtDay.value !== '' ? parseInt(evtDay.value, 10) : null;
-  const hourVal = evtTime.value !== '' ? parseInt(evtTime.value, 10) : null;
+  const hourVal = evtTime.value !== '' ? parseFloat(evtTime.value) : null;
 
   if (info.hours?.weekdayText?.length && dayVal != null && state.startDate) {
     const base = parseLocalDate(state.startDate);
@@ -1631,7 +1637,7 @@ modalSave.addEventListener('click', () => {
 
   const people  = [...peopleChips].filter(c => c.classList.contains('selected')).map(c => c.dataset.person);
   const dayVal  = evtDay.value !== ''  ? parseInt(evtDay.value, 10)  : null;
-  const hourVal = evtTime.value !== '' ? parseInt(evtTime.value, 10) : null;
+  const hourVal = evtTime.value !== '' ? parseFloat(evtTime.value) : null;
 
   const fields = {
     title,
