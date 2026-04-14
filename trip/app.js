@@ -39,7 +39,15 @@ function uid()  { return Math.random().toString(36).slice(2, 10) + Date.now().to
 // ── API sync & auth ──────────────────────────────────────────────────────────
 
 const SYNC_INTERVAL_MS = 15_000;
-let syncPassword   = localStorage.getItem('trip-password') || '';
+const PASSWORD_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+function loadStoredPassword() {
+  const pw  = localStorage.getItem('trip-password') || '';
+  const ts  = parseInt(localStorage.getItem('trip-password-ts') || '0', 10);
+  if (pw && Date.now() - ts < PASSWORD_TTL_MS) return pw;
+  if (pw) { localStorage.removeItem('trip-password'); localStorage.removeItem('trip-password-ts'); }
+  return '';
+}
+let syncPassword   = loadStoredPassword();
 let lastSyncedAt   = null;   // ISO string of the server's last updated_at we've applied
 let syncSaveTimer  = null;
 let syncPollTimer  = null;
@@ -126,6 +134,7 @@ function startSyncPoll() {
 function showPasswordGate() {
   syncPassword = '';
   localStorage.removeItem('trip-password');
+  localStorage.removeItem('trip-password-ts');
   document.getElementById('password-overlay').classList.remove('hidden');
   setTimeout(() => document.getElementById('password-input').focus(), 50);
 }
@@ -154,6 +163,7 @@ async function submitPassword() {
     }
     syncPassword = pw;
     localStorage.setItem('trip-password', pw);
+    localStorage.setItem('trip-password-ts', Date.now().toString());
     const { state: remote, updatedAt } = await res.json();
     if (remote) {
       state = remote;
@@ -2132,6 +2142,7 @@ document.getElementById('password-input').addEventListener('keydown', e => {
 });
 document.getElementById('btn-logout').addEventListener('click', () => {
   localStorage.removeItem('trip-password');
+  localStorage.removeItem('trip-password-ts');
   syncPassword = '';
   clearInterval(syncPollTimer);
   showPasswordGate();
