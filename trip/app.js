@@ -607,6 +607,12 @@ function makeEventCard(evt) {
 
   if (!eventMatchesView(evt)) card.classList.add('filtered-out');
 
+  if (/\[tbd\]/i.test(evt.title)) {
+    card.classList.add('bracket-tbd');
+  } else if (/\[.+\]/.test(evt.title)) {
+    card.classList.add('bracket-note');
+  }
+
   const editBtn = document.createElement('button');
   editBtn.className   = 'event-edit-btn';
   editBtn.textContent = '✎';
@@ -858,12 +864,23 @@ btnHomeTravelEl.addEventListener('click', () => {
   if (showHomeTravel) renderTravelTimes();
 });
 
-function makeHomeTravelIndicator(col, key, topOffset, labelHtml, warn) {
+// Copy the horizontal position of an event card to a travel indicator,
+// so that pills in multi-column layouts align with their associated event.
+function matchCardHorizPos(indicator, col, evtId) {
+  const card = col.querySelector(`[data-id="${evtId}"]`);
+  if (!card || !card.style.left) return; // full-width default from CSS
+  indicator.style.left  = card.style.left;
+  indicator.style.width = card.style.width;
+  indicator.style.right = 'unset';
+}
+
+function makeHomeTravelIndicator(col, key, topOffset, labelHtml, warn, evtId) {
   col.querySelector(`[data-travel-key="${key}"]`)?.remove();
   const ind = document.createElement('div');
   ind.className = 'travel-indicator';
   ind.dataset.travelKey = key;
   ind.style.top = `calc(var(--day-header-h) + ${topOffset} * var(--hour-height) - 10px)`;
+  if (evtId) matchCardHorizPos(ind, col, evtId);
   const bdg = document.createElement('span');
   bdg.className = `travel-badge travel-badge-home${warn ? ' travel-badge-warn' : ''}`;
   bdg.innerHTML = labelHtml;
@@ -962,7 +979,7 @@ async function renderTravelTimes() {
       const a = dayEvents[i];
       const b = dayEvents[i + 1];
 
-      const aEndHour = a.hour + (a.duration || 1);
+      const aEndHour = a.hour + (a.duration ?? 1);
       const gap      = b.hour - aEndHour;
       if (gap > 0.5) continue; // more than 30 min gap — skip
 
@@ -988,6 +1005,7 @@ async function renderTravelTimes() {
       indicator.className = 'travel-indicator';
       indicator.dataset.travelKey = existingKey;
       indicator.style.top = `calc(var(--day-header-h) + ${midOffset} * var(--hour-height) - 10px)`;
+      matchCardHorizPos(indicator, col, a.id);
 
       const badge = document.createElement('span');
       badge.className = `travel-badge${isWarn ? ' travel-badge-warn' : ''}`;
@@ -1028,7 +1046,7 @@ async function renderTravelTimes() {
             const label  = walkMin <= 25
               ? `🏠 → 🚶 ${prefix}${walkMin}m · 🚗 ${prefix}${driveMin}m`
               : `🏠 → 🚗 ${prefix}${driveMin}m`;
-            makeHomeTravelIndicator(col, `home-to-${evt.id}`, evt.hour - START_HOUR, label, walkMin > 10);
+            makeHomeTravelIndicator(col, `home-to-${evt.id}`, evt.hour - START_HOUR, label, walkMin > 10, evt.id);
           }
         }
       }
@@ -1046,7 +1064,7 @@ async function renderTravelTimes() {
             // Use ?? 1 (not || 1) so duration=0 for flight arrivals places the
             // indicator right at arrival time, not 1 hour later.
             const endOffset = evt.hour + (evt.duration ?? 1) - START_HOUR;
-            makeHomeTravelIndicator(col, `home-from-${evt.id}`, endOffset, label, walkMin > 10);
+            makeHomeTravelIndicator(col, `home-from-${evt.id}`, endOffset, label, walkMin > 10, evt.id);
           }
         }
       }

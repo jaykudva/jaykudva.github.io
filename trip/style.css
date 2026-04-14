@@ -841,6 +841,16 @@ html, body {
 }
 .flight-card:hover { opacity: 1; }
 
+/* ── Bracket-tagged events ── */
+.bracket-note {
+  outline: 2px dashed rgba(234, 179, 8, 0.85);
+  outline-offset: -2px;
+}
+.bracket-tbd {
+  outline: 2px dashed rgba(239, 68, 68, 0.85);
+  outline-offset: -2px;
+}
+
 /* ── Flight modal ── */
 #flight-modal {
   background: var(--surface);
