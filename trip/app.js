@@ -376,16 +376,19 @@ const peopleChips  = document.querySelectorAll('#people-chips .person-chip');
 const calZoomEl = document.getElementById('cal-zoom');
 
 function updateHourHeight() {
-  const usable = calContainer.clientHeight - getDayHeaderH();
-  // min: fit all 24 hours without scrolling (at least 20px per hour)
-  const minHH  = Math.max(20, usable / N_HOURS);
-  // max: show ~10 hours (anything smaller scrolls)
-  const maxHH  = Math.max(minHH, usable / 10);
+  const usable   = calContainer.clientHeight - getDayHeaderH();
+  const isMobile = window.innerWidth <= 640;
+  // On mobile, enforce a minimum that ensures the day is always taller than
+  // the viewport (so vertical scroll always works). 44 px/hr × 24 hrs ≈ 1056 px.
+  const minHH  = isMobile ? 44 : Math.max(20, usable / N_HOURS);
+  // max: show ~10 hours at most before scrolling kicks in
+  const maxHH  = isMobile ? 88 : Math.max(minHH, usable / 10);
 
   const pct = parseInt(calZoomEl.value, 10) / 100;
   const hh  = minHH + pct * (maxHH - minHH);
 
-  calScroll.style.overflowY = 'auto';
+  // Scroll only when zoomed in beyond the point of fitting everything
+  calScroll.style.overflowY = hh > usable / N_HOURS + 0.5 ? 'auto' : 'hidden';
 
   document.documentElement.style.setProperty('--hour-height', hh + 'px');
 }
@@ -929,36 +932,9 @@ function makeHomeTravelIndicator(col, key, topOffset, labelHtml, warn, evtId) {
   col.appendChild(ind);
 }
 
-const OSRM_CACHE_KEY = 'trip-osrm-cache';
-
-function osrmCache() {
-  try { return JSON.parse(localStorage.getItem(OSRM_CACHE_KEY)) || {}; }
-  catch { return {}; }
-}
-function osrmCacheSet(key, val) {
-  const c = osrmCache(); c[key] = val;
-  try { localStorage.setItem(OSRM_CACHE_KEY, JSON.stringify(c)); } catch {}
-}
-// Purge any approximate (Haversine fallback) entries saved by older code
-// so they get retried against the real GraphHopper API.
-(function purgeApproxCache() {
-  const c = osrmCache();
-  const cleaned = Object.fromEntries(Object.entries(c).filter(([, v]) => !v.approx));
-  if (Object.keys(cleaned).length !== Object.keys(c).length) {
-    try { localStorage.setItem(OSRM_CACHE_KEY, JSON.stringify(cleaned)); } catch {}
-  }
-})();
-
-// Straight-line distance fallback (Haversine), used when OSRM times out.
-function haversineKm(from, to) {
-  const R = 6371;
-  const dLat = (to.lat - from.lat) * Math.PI / 180;
-  const dLng = (to.lng - from.lng) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2
-          + Math.cos(from.lat * Math.PI / 180) * Math.cos(to.lat * Math.PI / 180)
-          * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
+// In-memory session cache — avoids redundant server round-trips within one page
+// load. DB (Supabase via /api/route) is the sole persistent store; no localStorage.
+const _routeMemCache = new Map();
 
 // Abortable sleep — rejects with AbortError if signal fires during the wait.
 function sleep(ms, signal) {
@@ -969,43 +945,45 @@ function sleep(ms, signal) {
   });
 }
 
-// Counts uncached API calls in the current renderTravelTimes pass —
-// used to stagger requests across 5 seconds.
+// Counts DB-miss API calls in the current renderTravelTimes pass —
+// used to stagger GraphHopper queries so we don't blow the rate limit.
 let _routeCallCount = 0;
-const ROUTE_STAGGER_MS = 125; // 40 calls × 125 ms ≈ 5 s
+const ROUTE_STAGGER_MS = 125; // 40 misses × 125 ms ≈ 5 s
 
 async function getDrivingInfo(from, to, signal) {
-  const key = `${from.lat.toFixed(5)},${from.lng.toFixed(5)}->${to.lat.toFixed(5)},${to.lng.toFixed(5)}`;
-  const cached = osrmCache()[key];
-  if (cached) return cached;
+  const key = routeKey(from, to);
 
-  // Stagger uncached requests: each one waits an extra 125 ms beyond the last.
+  // 1. In-memory hit (same page session, no network)
+  if (_routeMemCache.has(key)) return _routeMemCache.get(key);
+
+  // 2. Stagger before hitting the server so GraphHopper isn't flooded.
+  //    (Server returns instantly for DB-cached routes; delay only matters for misses.)
   const delay = _routeCallCount++ * ROUTE_STAGGER_MS;
   if (delay > 0) {
     try { await sleep(delay, signal); } catch { return null; }
   }
   if (signal?.aborted) return null;
 
+  // 3. Ask the server — it checks Supabase first, then GraphHopper on a miss,
+  //    and writes the result back to Supabase before responding.
   try {
     const url = `${API_BASE}/api/route?fromLat=${from.lat}&fromLng=${from.lng}&toLat=${to.lat}&toLng=${to.lng}`;
     const res  = await fetch(url, { signal });
-    if (!res.ok) throw new Error(`API ${res.status}`);
+    if (!res.ok) return null;
     const data = await res.json();
-    console.log(`[travel] graphhopper ${key} → ${data.distKm.toFixed(2)}km | walk ${data.walkMin}m | drive ${data.driveMin}m`);
-    osrmCacheSet(key, data);
+    _routeMemCache.set(key, data);
     return data;
   } catch (err) {
     if (err.name === 'AbortError') return null;
-    // Backend unreachable — fall back to Haversine (not cached so it retries next load)
-    const distKm   = haversineKm(from, to) * 1.35;
-    const walkMin  = Math.round(distKm / 4.5 * 60);
-    const driveMin = Math.round(distKm / 25 * 60);
-    console.log(`[travel] haversine fallback ${key} → ${distKm.toFixed(2)}km | walk ${walkMin}m | drive ${driveMin}m`);
-    return { distKm, walkMin, driveMin, approx: true };
+    return null; // no fallback — show nothing rather than a wrong approximation
   }
 }
 
 let _travelAbort = null;
+
+function routeKey(from, to) {
+  return `${from.lat.toFixed(5)},${from.lng.toFixed(5)}->${to.lat.toFixed(5)},${to.lng.toFixed(5)}`;
+}
 
 // Render travel time indicators for back-to-back events on each day.
 // "Back-to-back" = event B starts within 30 min of event A ending.
@@ -1017,6 +995,80 @@ async function renderTravelTimes() {
 
   const n = getDayCount();
   if (n === 0) return;
+
+  // ── Bulk DB prefetch ──────────────────────────────────────────────────────
+  // Collect every route key we'll need this render pass, then fetch all
+  // DB-cached ones in a single round-trip before starting the indicator loop.
+  // Only true misses (not in DB) will hit GraphHopper, staggered as before.
+  {
+    const neededKeys = new Set();
+    const home = (showHomeTravel && state.home?.lat != null) ? state.home : null;
+
+    for (let day = 1; day <= n; day++) {
+      const flightVirtualEvents = (state.flights || [])
+        .filter(f => flightDay(f) === day && flightMatchesView(f))
+        .flatMap(f => {
+          const isTripDeparture = f.departure?.tz === TRIP_TZ;
+          if (isTripDeparture) {
+            if (f.departure?.lat == null || f.depHourCDMX == null) return [];
+            return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: f.depHourCDMX, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
+          } else {
+            if (f.arrival?.lat == null || f.arrHourCDMX == null) return [];
+            return [{ id: `__flight_${f.id}`, _isDep: false, hour: f.arrHourCDMX, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
+          }
+        });
+
+      const dayEvents = [
+        ...state.events.filter(e => e.day === day && e.hour != null && e.location?.lat != null),
+        ...flightVirtualEvents,
+      ].sort((a, b) => a.hour - b.hour);
+
+      for (let i = 0; i < dayEvents.length - 1; i++) {
+        const a = dayEvents[i];
+        const b = dayEvents[i + 1];
+        const gap = b.hour - (a.hour + (a.duration ?? 1));
+        if (gap <= 0.5) neededKeys.add(routeKey(a.location, b.location));
+      }
+
+      if (home) {
+        for (const evt of dayEvents) {
+          const isFlightArrival   = evt.id.startsWith('__flight_') && !evt._isDep;
+          const isFlightDeparture = evt._isDep === true;
+          const hasPred = dayEvents.some(o =>
+            o.id !== evt.id && (evt.hour - (o.hour + (o.duration ?? 1))) <= 0.5 && o.hour <= evt.hour
+          );
+          const hasSucc = dayEvents.some(o =>
+            o.id !== evt.id && (o.hour - (evt.hour + (evt.duration ?? 1))) <= 0.5 && o.hour >= evt.hour
+          );
+          if (!hasPred && !isFlightArrival)   neededKeys.add(routeKey(home, evt.location));
+          if (!hasSucc && !isFlightDeparture) neededKeys.add(routeKey(evt.location, home));
+        }
+      }
+    }
+
+    const uncachedKeys = [...neededKeys].filter(k => !_routeMemCache.has(k));
+    if (uncachedKeys.length > 0) {
+      try {
+        const res = await fetch(`${API_BASE}/api/routes/bulk`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Trip-Password': syncPassword },
+          body: JSON.stringify({ keys: uncachedKeys }),
+          signal,
+        });
+        if (res.ok) {
+          const { results } = await res.json();
+          for (const [key, val] of Object.entries(results)) {
+            _routeMemCache.set(key, val);
+          }
+          console.log(`[bulk] pre-warmed ${Object.keys(results).length}/${uncachedKeys.length} routes from DB`);
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        // non-fatal — individual calls will still work
+      }
+    }
+    if (signal.aborted) return;
+  }
 
   for (let day = 1; day <= n; day++) {
     if (signal.aborted) return;
@@ -1056,15 +1108,14 @@ async function renderTravelTimes() {
       const info = await getDrivingInfo(a.location, b.location, signal);
       if (!info) continue;
 
-      const { driveMin, walkMin, approx } = info;
+      const { driveMin, walkMin } = info;
       if (walkMin < 1) continue;
 
       const showWalk = walkMin <= 25;
       const isWarn   = walkMin > 10;
-      const prefix   = approx ? '~' : '';
       const label    = showWalk
-        ? `🚶 ${prefix}${walkMin}m · 🚗 ${prefix}${driveMin}m`
-        : `🚗 ${prefix}${driveMin}m`;
+        ? `🚶 ${walkMin}m · 🚗 ${driveMin}m`
+        : `🚗 ${driveMin}m`;
 
       const midOffset = aEndHour - START_HOUR;
 
@@ -1111,12 +1162,11 @@ async function renderTravelTimes() {
       if (!hasPred && !isFlightArrival) {
         const info = await getDrivingInfo(home, evt.location, signal);
         if (info && !signal.aborted) {
-          const { driveMin, walkMin, approx } = info;
+          const { driveMin, walkMin } = info;
           if (walkMin >= 1) {
-            const prefix = approx ? '~' : '';
-            const label  = walkMin <= 25
-              ? `🏠 → 🚶 ${prefix}${walkMin}m · 🚗 ${prefix}${driveMin}m`
-              : `🏠 → 🚗 ${prefix}${driveMin}m`;
+            const label = walkMin <= 25
+              ? `🏠 → 🚶 ${walkMin}m · 🚗 ${driveMin}m`
+              : `🏠 → 🚗 ${driveMin}m`;
             makeHomeTravelIndicator(col, `home-to-${evt.id}`, evt.hour - START_HOUR, label, walkMin > 10, evt.id);
           }
         }
@@ -1126,12 +1176,11 @@ async function renderTravelTimes() {
         if (signal.aborted) return;
         const info = await getDrivingInfo(evt.location, home, signal);
         if (info && !signal.aborted) {
-          const { driveMin, walkMin, approx } = info;
+          const { driveMin, walkMin } = info;
           if (walkMin >= 1) {
-            const prefix    = approx ? '~' : '';
-            const label     = walkMin <= 25
-              ? `🚶 ${prefix}${walkMin}m · 🚗 ${prefix}${driveMin}m → 🏠`
-              : `🚗 ${prefix}${driveMin}m → 🏠`;
+            const label = walkMin <= 25
+              ? `🚶 ${walkMin}m · 🚗 ${driveMin}m → 🏠`
+              : `🚗 ${driveMin}m → 🏠`;
             // Use ?? 1 (not || 1) so duration=0 for flight arrivals places the
             // indicator right at arrival time, not 1 hour later.
             const endOffset = evt.hour + (evt.duration ?? 1) - START_HOUR;
@@ -2228,6 +2277,9 @@ document.getElementById('btn-logout').addEventListener('click', () => {
   clearInterval(syncPollTimer);
   showPasswordGate();
 });
+
+// Clean up legacy localStorage route cache if present
+localStorage.removeItem('trip-osrm-cache');
 
 // Bootstrap: render nothing until auth confirmed
 (async () => {

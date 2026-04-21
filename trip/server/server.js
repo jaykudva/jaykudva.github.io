@@ -86,6 +86,34 @@ app.get('/api/route', async (req, res) => {
   }
 });
 
+// POST /api/routes/bulk  { keys: ["lat,lng->lat,lng", ...] }
+// Returns { results: { [key]: { distKm, driveMin, walkMin } } } for all keys found in cache.
+// Keys not in the DB are omitted — the client should fetch those individually via /api/route.
+app.post('/api/routes/bulk', requirePassword, async (req, res) => {
+  const { keys } = req.body;
+  if (!Array.isArray(keys) || keys.length === 0) return res.json({ results: {} });
+
+  const sb = getSupabase();
+  if (!sb) return res.json({ results: {} });
+
+  const { data, error } = await sb
+    .from('route_cache')
+    .select('key,dist_km,drive_min,walk_min')
+    .in('key', keys);
+
+  if (error) {
+    console.warn('[routes/bulk] query failed:', error.message);
+    return res.json({ results: {} });
+  }
+
+  const results = {};
+  for (const row of data || []) {
+    results[row.key] = { distKm: row.dist_km, driveMin: row.drive_min, walkMin: row.walk_min };
+  }
+  console.log(`[routes/bulk] ${Object.keys(results).length}/${keys.length} cache hits`);
+  res.json({ results });
+});
+
 // Fetch a URL with a browser-like User-Agent so Google doesn't serve a bot page.
 async function browserFetch(url) {
   return fetch(url, {

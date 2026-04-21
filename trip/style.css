@@ -1171,11 +1171,11 @@ body.is-dragging .travel-indicator {
   #btn-theme     { order: 6; width: 28px; height: 28px; font-size: 13px; }
   #btn-add-flight { display: none; } /* access via desktop */
 
-  /* Filter bar: scrollable row */
+  /* Filter bar: always-scrollable row so zoom slider is reachable */
   #filter-bar {
     height: auto;
     min-height: var(--filter-bar-h);
-    overflow-x: auto;
+    overflow-x: scroll;
     -webkit-overflow-scrolling: touch;
     justify-content: flex-start;
     gap: 6px;
@@ -1191,6 +1191,10 @@ body.is-dragging .travel-indicator {
   .day-col {
     min-width: calc(100vw - var(--gutter-w) - 2px);
   }
+
+  /* Override the JS-managed overflow-y so vertical scroll always works on mobile.
+     !important wins over the inline style set by updateHourHeight(). */
+  #calendar-scroll { overflow-y: auto !important; }
 
   /* Unscheduled bar */
   #unscheduled-bar { flex-shrink: 0; }
