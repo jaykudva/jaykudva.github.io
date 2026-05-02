@@ -21,15 +21,15 @@ const CAT_LABEL    = { food: 'Food & Drink', activity: 'Activity', accommodation
 // ── State ─────────────────────────────────────────────────────────────────────
 
 function defaultState() {
-  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [], people: [], groups: [], homeDays: {} };
+  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [], people: [], homeDays: {} };
 }
 
 // Run after loading state — adds new fields and migrates legacy hardcoded people.
 function migrateState() {
   if (!state.flights)  state.flights  = [];
   if (!state.people)   state.people   = [];
-  if (!state.groups)   state.groups   = [];
   if (!state.homeDays) state.homeDays = {};
+  delete state.groups; // no longer used
 
   // If no people defined yet but events/flights reference old hardcoded IDs, auto-migrate.
   if (state.people.length === 0) {
@@ -39,21 +39,15 @@ function migrateState() {
     ]);
     if (allIds.size > 0) {
       const legacyName  = { jay: 'Jay', abi: 'Abi', austin: 'Austin', johanna: 'Johanna' };
-      const legacyGroup = { jay: 'jay-abi', abi: 'jay-abi', austin: 'austin-johanna', johanna: 'austin-johanna' };
       const legacyColor = { jay: '#f97316', abi: '#ec4899', austin: '#22c55e', johanna: '#3b82f6' };
-      // Ensure legacy groups exist
-      const groupIds = new Set([...allIds].map(id => legacyGroup[id]).filter(Boolean));
-      const groupNames = { 'jay-abi': 'Jay & Abi', 'austin-johanna': 'Austin & Johanna' };
-      for (const gid of groupIds) {
-        if (!state.groups.some(g => g.id === gid))
-          state.groups.push({ id: gid, name: groupNames[gid] || gid });
-      }
       for (const id of allIds) {
         if (!state.people.some(p => p.id === id))
-          state.people.push({ id, name: legacyName[id] || id, groupId: legacyGroup[id] || null, color: legacyColor[id] || '#64748b' });
+          state.people.push({ id, name: legacyName[id] || id, color: legacyColor[id] || '#64748b' });
       }
     }
   }
+  // Strip any leftover groupId fields
+  for (const p of state.people) delete p.groupId;
 }
 
 // ── People helpers ────────────────────────────────────────────────────────────
@@ -63,9 +57,6 @@ function getPersonName(personId) {
 }
 function getPersonColor(personId) {
   return (state.people || []).find(p => p.id === personId)?.color || '#64748b';
-}
-function getPersonGroup(personId) {
-  return (state.people || []).find(p => p.id === personId)?.groupId || null;
 }
 function nextPersonColor() {
   const used = new Set((state.people || []).map(p => p.color));
@@ -358,26 +349,18 @@ function flightDay(f) {
 // Does this flight match the current view filter?
 function flightMatchesView(flight) {
   if (viewFilter === 'all') return true;
-  return (flight.people || []).some(p => getPersonGroup(p) === viewFilter);
+  return (flight.people || []).includes(viewFilter);
 }
 
 // ── View filter helpers ───────────────────────────────────────────────────────
 
-// Returns 'group' | 'jay-abi' | 'austin-johanna'
-function eventScope(evt) {
-  const people = evt.people || [];
-  if (people.length === 0) return 'unassigned';
-  const groups = new Set(people.map(p => getPersonGroup(p)).filter(Boolean));
-  return groups.size > 1 ? 'group' : ([...groups][0] || 'group');
-}
-
 // Should this event show in the current viewFilter?
-// 'unassigned' events (no people) are solid in "all" view, faded in couple views.
+// Events with no people are solid in "all" view, faded in person views.
 function eventMatchesView(evt) {
   if (viewFilter === 'all') return true;
-  const scope = eventScope(evt);
-  if (scope === 'unassigned') return false;
-  return scope === 'group' || scope === viewFilter;
+  const people = evt.people || [];
+  if (people.length === 0) return false;
+  return people.includes(viewFilter);
 }
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -1266,21 +1249,21 @@ function onCellClick(e) {
 // ── View filter ───────────────────────────────────────────────────────────────
 
 function renderFilterBar() {
-  // Reset viewFilter if its group was deleted
-  if (viewFilter !== 'all' && !(state.groups || []).some(g => g.id === viewFilter)) {
+  // Reset viewFilter if person was removed
+  if (viewFilter !== 'all' && !(state.people || []).some(p => p.id === viewFilter)) {
     viewFilter = 'all';
   }
   const container = document.querySelector('.view-filters');
   container.innerHTML = '';
 
-  const allGroups = [{ id: 'all', name: 'All' }, ...(state.groups || [])];
-  for (const g of allGroups) {
+  const items = [{ id: 'all', name: 'All' }, ...(state.people || [])];
+  for (const item of items) {
     const btn = document.createElement('button');
-    btn.className = `filter-btn${viewFilter === g.id ? ' active' : ''}`;
-    btn.dataset.view = g.id;
-    btn.textContent = g.name;
+    btn.className = `filter-btn${viewFilter === item.id ? ' active' : ''}`;
+    btn.dataset.view = item.id;
+    btn.textContent = item.name;
     btn.addEventListener('click', () => {
-      viewFilter = g.id;
+      viewFilter = item.id;
       container.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b === btn));
       render();
     });
@@ -1303,14 +1286,7 @@ function renderPeopleChips(containerId, selectedIds = [], selectedClass = 'selec
     container.appendChild(hint);
     return;
   }
-  // Sort people by group order then by position within group
-  const groupOrder = (state.groups || []).map(g => g.id);
-  const sorted = [...people].sort((a, b) => {
-    const ai = a.groupId ? groupOrder.indexOf(a.groupId) : 999;
-    const bi = b.groupId ? groupOrder.indexOf(b.groupId) : 999;
-    return ai - bi;
-  });
-  for (const p of sorted) {
+  for (const p of people) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'person-chip';
@@ -2149,107 +2125,64 @@ const peopleManagerContent = document.getElementById('people-manager-content');
 
 function renderPeopleManager() {
   peopleManagerContent.innerHTML = '';
-  const groups  = state.groups  || [];
-  const people  = state.people  || [];
+  const people = state.people || [];
 
-  if (!groups.length && !people.some(p => !p.groupId)) {
-    const empty = document.createElement('p');
-    empty.className = 'no-people-hint';
-    empty.textContent = 'No groups yet. Add one below.';
-    peopleManagerContent.appendChild(empty);
+  // Existing people as removable tags
+  const members = document.createElement('div');
+  members.className = 'pm-members';
+  if (!people.length) {
+    const hint = document.createElement('span');
+    hint.className = 'no-people-hint';
+    hint.textContent = 'No people yet.';
+    members.appendChild(hint);
   }
-
-  for (const group of groups) {
-    const section = document.createElement('div');
-    section.className = 'pm-group';
-
-    // Group header: editable name + remove button
-    const header = document.createElement('div');
-    header.className = 'pm-group-header';
-
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.className = 'pm-group-name';
-    nameInput.value = group.name;
-    nameInput.addEventListener('change', () => {
-      group.name = nameInput.value.trim() || group.name;
-      save(); renderFilterBar();
-    });
-    header.appendChild(nameInput);
-
-    const removeGroup = document.createElement('button');
-    removeGroup.className = 'btn-ghost pm-btn-sm';
-    removeGroup.textContent = 'Remove';
-    removeGroup.addEventListener('click', () => {
-      // Move people in this group to ungrouped
-      for (const p of state.people) { if (p.groupId === group.id) p.groupId = null; }
-      state.groups = state.groups.filter(g => g.id !== group.id);
-      save(); renderPeopleManager(); renderFilterBar();
-    });
-    header.appendChild(removeGroup);
-    section.appendChild(header);
-
-    // Members
-    const members = document.createElement('div');
-    members.className = 'pm-members';
-    const groupPeople = people.filter(p => p.groupId === group.id);
-    for (const person of groupPeople) {
-      const tag = document.createElement('span');
-      tag.className = 'pm-person-tag';
-      tag.style.setProperty('--chip-color', person.color || '#64748b');
-
-      const nameEl = document.createElement('span');
-      nameEl.textContent = person.name;
-      tag.appendChild(nameEl);
-
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'pm-person-remove';
-      removeBtn.textContent = '×';
-      removeBtn.title = `Remove ${person.name}`;
-      removeBtn.addEventListener('click', () => {
-        state.people = state.people.filter(p => p.id !== person.id);
-        save(); renderPeopleManager();
-      });
-      tag.appendChild(removeBtn);
-      members.appendChild(tag);
-    }
-    section.appendChild(members);
-
-    // Add person input
-    const addRow = document.createElement('div');
-    addRow.className = 'pm-add-person-row';
-    const addInput = document.createElement('input');
-    addInput.type = 'text';
-    addInput.placeholder = 'Add person…';
-    addInput.className = 'pm-add-input';
-    const addBtn = document.createElement('button');
-    addBtn.className = 'btn-ghost pm-btn-sm';
-    addBtn.textContent = 'Add';
-    const doAdd = () => {
-      const name = addInput.value.trim();
-      if (!name) return;
-      const base = slugify(name);
-      // Ensure unique ID
-      let id = base, n = 1;
-      while (state.people.some(p => p.id === id)) id = `${base}_${n++}`;
-      state.people.push({ id, name, groupId: group.id, color: nextPersonColor() });
-      addInput.value = '';
+  for (const person of people) {
+    const tag = document.createElement('span');
+    tag.className = 'pm-person-tag';
+    tag.style.setProperty('--chip-color', person.color || '#64748b');
+    const nameEl = document.createElement('span');
+    nameEl.textContent = person.name;
+    tag.appendChild(nameEl);
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'pm-person-remove';
+    removeBtn.textContent = '×';
+    removeBtn.title = `Remove ${person.name}`;
+    removeBtn.addEventListener('click', () => {
+      state.people = state.people.filter(p => p.id !== person.id);
       save(); renderPeopleManager();
-    };
-    addBtn.addEventListener('click', doAdd);
-    addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
-    addRow.appendChild(addInput);
-    addRow.appendChild(addBtn);
-    section.appendChild(addRow);
-    peopleManagerContent.appendChild(section);
+    });
+    tag.appendChild(removeBtn);
+    members.appendChild(tag);
   }
-}
+  peopleManagerContent.appendChild(members);
 
-document.getElementById('btn-add-group').addEventListener('click', () => {
-  const id = `group_${uid()}`;
-  state.groups.push({ id, name: 'New Group' });
-  save(); renderPeopleManager(); renderFilterBar();
-});
+  // Add person row
+  const addRow = document.createElement('div');
+  addRow.className = 'pm-add-person-row';
+  addRow.style.marginTop = '12px';
+  const addInput = document.createElement('input');
+  addInput.type = 'text';
+  addInput.placeholder = 'Add person…';
+  addInput.className = 'pm-add-input';
+  const addBtn = document.createElement('button');
+  addBtn.className = 'btn-ghost pm-btn-sm';
+  addBtn.textContent = 'Add';
+  const doAdd = () => {
+    const name = addInput.value.trim();
+    if (!name) return;
+    const base = slugify(name);
+    let id = base, n = 1;
+    while (state.people.some(p => p.id === id)) id = `${base}_${n++}`;
+    state.people.push({ id, name, color: nextPersonColor() });
+    addInput.value = '';
+    save(); renderPeopleManager();
+  };
+  addBtn.addEventListener('click', doAdd);
+  addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
+  addRow.appendChild(addInput);
+  addRow.appendChild(addBtn);
+  peopleManagerContent.appendChild(addRow);
+}
 
 document.getElementById('btn-manage-people').addEventListener('click', () => {
   renderPeopleManager();

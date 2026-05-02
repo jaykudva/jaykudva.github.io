@@ -1174,26 +1174,7 @@ body.is-dragging .travel-indicator {
 }
 #people-modal h3 { margin-bottom: 16px; }
 
-.pm-group {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-  margin-bottom: 10px;
-}
-.pm-group-header {
-  display: flex; align-items: center; gap: 8px; margin-bottom: 10px;
-}
-.pm-group-name {
-  flex: 1;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  font-size: 0.95rem;
-  padding: 4px 10px;
-}
+
 .pm-members { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 28px; }
 .pm-person-tag {
   display: inline-flex; align-items: center; gap: 4px;
