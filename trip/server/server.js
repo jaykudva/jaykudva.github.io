@@ -428,14 +428,60 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-function requirePassword(req, res, next) {
-  const password = process.env.TRIP_PASSWORD;
-  if (!password) return next();
-  if (req.headers['x-trip-password'] !== password) {
+async function requirePassword(req, res, next) {
+  const tripId = req.headers['x-trip-id'];
+  const pw     = req.headers['x-trip-password'];
+  if (!tripId) return res.status(400).json({ error: 'Missing X-Trip-Id header' });
+
+  const sb = getSupabase();
+  if (!sb) {
+    // Dev fallback: no Supabase configured — accept any request
+    req.tripId = tripId;
+    return next();
+  }
+
+  const { data: trip } = await sb
+    .from('trips')
+    .select('password')
+    .eq('id', tripId)
+    .single();
+
+  if (!trip || trip.password !== pw) {
     return res.status(401).json({ error: 'Wrong password' });
   }
+
+  req.tripId = tripId;
   next();
 }
+
+// GET /api/trips — public list of trip names
+app.get('/api/trips', async (req, res) => {
+  const sb = getSupabase();
+  if (!sb) return res.json({ trips: [] });
+  const { data, error } = await sb
+    .from('trips')
+    .select('id, name')
+    .order('created_at');
+  if (error) return res.status(502).json({ error: error.message });
+  res.json({ trips: data || [] });
+});
+
+// POST /api/trips — create a new trip
+app.post('/api/trips', async (req, res) => {
+  const { name, password } = req.body;
+  if (!name?.trim() || !password?.trim()) {
+    return res.status(400).json({ error: 'name and password are required' });
+  }
+  const sb = getSupabase();
+  if (!sb) return res.status(500).json({ error: 'Database not configured' });
+  const { data, error } = await sb
+    .from('trips')
+    .insert({ name: name.trim(), password: password.trim() })
+    .select('id')
+    .single();
+  if (error) return res.status(502).json({ error: error.message });
+  res.json({ id: data.id });
+});
 
 // GET /api/state — fetch persisted trip state
 app.get('/api/state', requirePassword, async (req, res) => {
@@ -445,7 +491,7 @@ app.get('/api/state', requirePassword, async (req, res) => {
   const { data, error } = await sb
     .from('trip_state')
     .select('state, updated_at')
-    .eq('id', 'main')
+    .eq('id', req.tripId)
     .maybeSingle();
 
   if (error) return res.status(502).json({ error: error.message });
@@ -462,7 +508,7 @@ app.put('/api/state', requirePassword, async (req, res) => {
 
   const { data, error } = await sb
     .from('trip_state')
-    .upsert({ id: 'main', state, updated_at: new Date().toISOString() })
+    .upsert({ id: req.tripId, state, updated_at: new Date().toISOString() })
     .select('updated_at')
     .single();
 

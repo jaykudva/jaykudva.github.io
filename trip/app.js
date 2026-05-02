@@ -4,7 +4,10 @@
 const IS_LOCAL    = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 const API_BASE    = IS_LOCAL ? 'http://localhost:3001' : 'https://grouptrip-phi.vercel.app';
 
-const STORAGE_KEY = 'trip-planner-v2';
+// Which trip we're viewing — null means show the landing page.
+const tripId = new URLSearchParams(window.location.search).get('trip');
+
+const STORAGE_KEY = tripId ? `trip-planner-${tripId}` : 'trip-planner-v2';
 const START_HOUR  = 0;
 const END_HOUR    = 23;
 const N_HOURS     = END_HOUR - START_HOUR + 1; // 24
@@ -40,17 +43,22 @@ function uid()  { return Math.random().toString(36).slice(2, 10) + Date.now().to
 
 const SYNC_INTERVAL_MS = 15_000;
 const PASSWORD_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+// Per-trip localStorage keys so multiple trips can be cached independently.
+function pwKey()   { return `trip-password-${tripId}`; }
+function pwTsKey() { return `trip-password-ts-${tripId}`; }
+
 function loadStoredPassword() {
-  const pw  = localStorage.getItem('trip-password') || '';
-  const tsRaw = localStorage.getItem('trip-password-ts');
-  // If password exists but no timestamp, back-fill now so the session stays valid
+  if (!tripId) return '';
+  const pw     = localStorage.getItem(pwKey()) || '';
+  const tsRaw  = localStorage.getItem(pwTsKey());
   if (pw && !tsRaw) {
-    localStorage.setItem('trip-password-ts', Date.now().toString());
+    localStorage.setItem(pwTsKey(), Date.now().toString());
     return pw;
   }
   const ts = parseInt(tsRaw || '0', 10);
   if (pw && Date.now() - ts < PASSWORD_TTL_MS) return pw;
-  if (pw) { localStorage.removeItem('trip-password'); localStorage.removeItem('trip-password-ts'); }
+  if (pw) { localStorage.removeItem(pwKey()); localStorage.removeItem(pwTsKey()); }
   return '';
 }
 let syncPassword   = loadStoredPassword();
@@ -60,7 +68,7 @@ let syncPollTimer  = null;
 let syncStatusEl   = null;   // set after DOM ready
 
 function apiHeaders() {
-  return { 'Content-Type': 'application/json', 'X-Trip-Password': syncPassword };
+  return { 'Content-Type': 'application/json', 'X-Trip-Password': syncPassword, 'X-Trip-Id': tripId };
 }
 
 function setSyncStatus(msg, cls = '') {
@@ -139,8 +147,8 @@ function startSyncPoll() {
 
 function showPasswordGate() {
   syncPassword = '';
-  localStorage.removeItem('trip-password');
-  localStorage.removeItem('trip-password-ts');
+  localStorage.removeItem(pwKey());
+  localStorage.removeItem(pwTsKey());
   document.getElementById('password-overlay').classList.remove('hidden');
   setTimeout(() => document.getElementById('password-input').focus(), 50);
 }
@@ -158,7 +166,7 @@ async function submitPassword() {
   btn.disabled = true;
   try {
     const res = await fetch(`${API_BASE}/api/state`, {
-      headers: { 'X-Trip-Password': pw },
+      headers: { 'Content-Type': 'application/json', 'X-Trip-Password': pw, 'X-Trip-Id': tripId },
     });
     if (res.status === 401) {
       errEl.textContent = 'Wrong password. Try again.';
@@ -168,8 +176,8 @@ async function submitPassword() {
       return;
     }
     syncPassword = pw;
-    localStorage.setItem('trip-password', pw);
-    localStorage.setItem('trip-password-ts', Date.now().toString());
+    localStorage.setItem(pwKey(), pw);
+    localStorage.setItem(pwTsKey(), Date.now().toString());
     const { state: remote, updatedAt } = await res.json();
     if (remote) {
       state = remote;
@@ -1051,7 +1059,7 @@ async function renderTravelTimes() {
       try {
         const res = await fetch(`${API_BASE}/api/routes/bulk`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Trip-Password': syncPassword },
+          headers: { 'Content-Type': 'application/json', 'X-Trip-Password': syncPassword, 'X-Trip-Id': tripId },
           body: JSON.stringify({ keys: uncachedKeys }),
           signal,
         });
@@ -2271,8 +2279,8 @@ document.getElementById('password-input').addEventListener('keydown', e => {
   if (e.key === 'Enter') submitPassword();
 });
 document.getElementById('btn-logout').addEventListener('click', () => {
-  localStorage.removeItem('trip-password');
-  localStorage.removeItem('trip-password-ts');
+  localStorage.removeItem(pwKey());
+  localStorage.removeItem(pwTsKey());
   syncPassword = '';
   clearInterval(syncPollTimer);
   showPasswordGate();
@@ -2281,8 +2289,82 @@ document.getElementById('btn-logout').addEventListener('click', () => {
 // Clean up legacy localStorage route cache if present
 localStorage.removeItem('trip-osrm-cache');
 
+// ── Landing page ──────────────────────────────────────────────────────────────
+
+async function showLandingPage() {
+  document.getElementById('landing-view').classList.remove('hidden');
+  document.getElementById('main-header').classList.add('hidden');
+  document.getElementById('filter-bar').classList.add('hidden');
+  document.getElementById('calendar-view').classList.add('hidden');
+  document.getElementById('map-view').classList.add('hidden');
+  document.getElementById('password-overlay').classList.add('hidden');
+
+  try {
+    const res = await fetch(`${API_BASE}/api/trips`);
+    const { trips } = await res.json();
+    const list = document.getElementById('trips-list');
+    list.innerHTML = '';
+    if (!trips.length) {
+      list.innerHTML = '<p class="no-trips">No trips yet — create one below.</p>';
+    } else {
+      for (const trip of trips) {
+        const a = document.createElement('a');
+        a.className = 'trip-card';
+        a.href = `?trip=${trip.id}`;
+        a.textContent = trip.name;
+        list.appendChild(a);
+      }
+    }
+  } catch {
+    document.getElementById('trips-list').innerHTML = '<p class="no-trips">Could not load trips.</p>';
+  }
+
+  document.getElementById('btn-create-trip').addEventListener('click', async () => {
+    const nameEl  = document.getElementById('new-trip-name');
+    const pwEl    = document.getElementById('new-trip-password');
+    const errEl   = document.getElementById('new-trip-error');
+    const btn     = document.getElementById('btn-create-trip');
+    const name    = nameEl.value.trim();
+    const password = pwEl.value.trim();
+    errEl.classList.add('hidden');
+    if (!name || !password) {
+      errEl.textContent = 'Name and password are required.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+    btn.disabled = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/trips`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, password }),
+      });
+      if (!res.ok) {
+        const { error } = await res.json();
+        errEl.textContent = error || 'Failed to create trip.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+      const { id } = await res.json();
+      // Pre-store password so the trip loads immediately without a gate
+      localStorage.setItem(`trip-password-${id}`, password);
+      localStorage.setItem(`trip-password-ts-${id}`, Date.now().toString());
+      window.location.href = `?trip=${id}`;
+    } catch {
+      errEl.textContent = 'Could not reach the server.';
+      errEl.classList.remove('hidden');
+      btn.disabled = false;
+    }
+  });
+}
+
 // Bootstrap: render nothing until auth confirmed
 (async () => {
+  if (!tripId) {
+    showLandingPage();
+    return;
+  }
+
   if (syncPassword) {
     const ok = await syncLoad();
     if (ok) {
