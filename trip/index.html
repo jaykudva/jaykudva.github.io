@@ -34,9 +34,9 @@
   <div id="filter-bar">
     <div class="view-filters">
       <button class="filter-btn active" data-view="all">All</button>
-      <button class="filter-btn" data-view="jay-abi">Jay &amp; Abi</button>
-      <button class="filter-btn" data-view="austin-johanna">Austin &amp; Johanna</button>
+      <!-- group filter buttons injected by JS -->
     </div>
+    <button id="btn-manage-people" class="btn-ghost btn-manage-people" title="Manage people &amp; groups">👥</button>
     <button id="btn-home" class="btn-home" title="Set home base">🏠 <span id="home-label">Set home</span></button>
     <button id="btn-home-travel" class="btn-home-travel is-on" title="Toggle home distance indicators">🏠 ↔</button>
     <div id="cal-zoom-control" class="cal-zoom-control">
@@ -159,10 +159,7 @@
       <div class="form-group">
         <label>People</label>
         <div class="people-chips" id="people-chips">
-          <button type="button" class="person-chip" data-person="jay">Jay</button>
-          <button type="button" class="person-chip" data-person="abi">Abi</button>
-          <button type="button" class="person-chip" data-person="austin">Austin</button>
-          <button type="button" class="person-chip" data-person="johanna">Johanna</button>
+          <!-- chips injected by JS -->
         </div>
       </div>
 
@@ -223,10 +220,7 @@
       <div class="form-group">
         <label>Who's on this flight?</label>
         <div class="people-chips" id="flt-people-chips">
-          <button type="button" class="person-chip" data-person="jay">Jay</button>
-          <button type="button" class="person-chip" data-person="abi">Abi</button>
-          <button type="button" class="person-chip" data-person="austin">Austin</button>
-          <button type="button" class="person-chip" data-person="johanna">Johanna</button>
+          <!-- chips injected by JS -->
         </div>
       </div>
 
@@ -263,6 +257,14 @@
   <div id="home-modal-overlay" class="hidden">
     <div id="home-modal">
       <h3>Home Base</h3>
+      <div class="form-row">
+        <div class="form-group fg-1">
+          <label>Apply to</label>
+          <select id="home-day-select">
+            <option value="">All days (default)</option>
+          </select>
+        </div>
+      </div>
       <div class="form-group">
         <label>Address</label>
         <div class="location-row">
@@ -276,6 +278,20 @@
         <div class="modal-actions-right">
           <button id="home-modal-cancel" class="btn-ghost">Cancel</button>
           <button id="home-modal-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── People manager modal ── -->
+  <div id="people-modal-overlay" class="hidden">
+    <div id="people-modal">
+      <h3>People &amp; Groups</h3>
+      <div id="people-manager-content"></div>
+      <button id="btn-add-group" class="btn-ghost" style="margin-top:12px">+ Add Group</button>
+      <div class="modal-actions" style="margin-top:16px">
+        <div class="modal-actions-right">
+          <button id="people-modal-done" class="btn-primary">Done</button>
         </div>
       </div>
     </div>

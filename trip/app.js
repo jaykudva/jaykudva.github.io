@@ -14,24 +14,80 @@ const N_HOURS     = END_HOUR - START_HOUR + 1; // 24
 const HOURS       = Array.from({ length: N_HOURS }, (_, i) => i + START_HOUR);
 const FIXED_COL_W = 180; // px for >7 days
 
-const PEOPLE_LABEL = { jay: 'Jay', abi: 'Abi', austin: 'Austin', johanna: 'Johanna' };
-const COUPLE_MAP   = { jay: 'jay-abi', abi: 'jay-abi', austin: 'austin-johanna', johanna: 'austin-johanna' };
 const CAT_COLOR    = { food: '#f97316', activity: '#22c55e', accommodation: '#3b82f6', transport: '#a855f7', other: '#64748b' };
+const PERSON_COLORS = ['#f97316','#ec4899','#22c55e','#3b82f6','#a855f7','#eab308','#ef4444','#14b8a6','#f43f5e','#0ea5e9'];
 const CAT_LABEL    = { food: 'Food & Drink', activity: 'Activity', accommodation: 'Stay', transport: 'Transport', other: 'Other' };
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
 function defaultState() {
-  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [] };
+  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [], people: [], groups: [], homeDays: {} };
+}
+
+// Run after loading state — adds new fields and migrates legacy hardcoded people.
+function migrateState() {
+  if (!state.flights)  state.flights  = [];
+  if (!state.people)   state.people   = [];
+  if (!state.groups)   state.groups   = [];
+  if (!state.homeDays) state.homeDays = {};
+
+  // If no people defined yet but events/flights reference old hardcoded IDs, auto-migrate.
+  if (state.people.length === 0) {
+    const allIds = new Set([
+      ...state.events.flatMap(e => e.people || []),
+      ...(state.flights || []).flatMap(f => f.people || []),
+    ]);
+    if (allIds.size > 0) {
+      const legacyName  = { jay: 'Jay', abi: 'Abi', austin: 'Austin', johanna: 'Johanna' };
+      const legacyGroup = { jay: 'jay-abi', abi: 'jay-abi', austin: 'austin-johanna', johanna: 'austin-johanna' };
+      const legacyColor = { jay: '#f97316', abi: '#ec4899', austin: '#22c55e', johanna: '#3b82f6' };
+      // Ensure legacy groups exist
+      const groupIds = new Set([...allIds].map(id => legacyGroup[id]).filter(Boolean));
+      const groupNames = { 'jay-abi': 'Jay & Abi', 'austin-johanna': 'Austin & Johanna' };
+      for (const gid of groupIds) {
+        if (!state.groups.some(g => g.id === gid))
+          state.groups.push({ id: gid, name: groupNames[gid] || gid });
+      }
+      for (const id of allIds) {
+        if (!state.people.some(p => p.id === id))
+          state.people.push({ id, name: legacyName[id] || id, groupId: legacyGroup[id] || null, color: legacyColor[id] || '#64748b' });
+      }
+    }
+  }
+}
+
+// ── People helpers ────────────────────────────────────────────────────────────
+
+function getPersonName(personId) {
+  return (state.people || []).find(p => p.id === personId)?.name || personId;
+}
+function getPersonColor(personId) {
+  return (state.people || []).find(p => p.id === personId)?.color || '#64748b';
+}
+function getPersonGroup(personId) {
+  return (state.people || []).find(p => p.id === personId)?.groupId || null;
+}
+function nextPersonColor() {
+  const used = new Set((state.people || []).map(p => p.color));
+  return PERSON_COLORS.find(c => !used.has(c)) || PERSON_COLORS[(state.people || []).length % PERSON_COLORS.length];
+}
+function slugify(name) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || uid();
+}
+
+// ── Home helpers ──────────────────────────────────────────────────────────────
+
+function getHomeForDay(day) {
+  const override = state.homeDays?.[String(day)];
+  if (override?.lat != null) return override;
+  return state.home?.lat != null ? state.home : null;
 }
 
 let state = (() => {
-  try {
-    const s = JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState();
-    if (!s.flights) s.flights = []; // migrate old saves
-    return s;
-  } catch { return defaultState(); }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || defaultState(); }
+  catch { return defaultState(); }
 })();
+migrateState();
 
 function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -86,7 +142,7 @@ async function syncLoad() {
     const { state: remote, updatedAt } = await res.json();
     if (remote) {
       state = remote;
-      if (!state.flights) state.flights = [];
+      migrateState();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
     lastSyncedAt = updatedAt;
@@ -128,7 +184,7 @@ async function syncPoll() {
       // Someone else saved — only accept if we're not mid-edit
       if (!syncSaveTimer) {
         state = remote;
-        if (!state.flights) state.flights = [];
+        migrateState();
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         lastSyncedAt = updatedAt;
         render();
@@ -181,7 +237,7 @@ async function submitPassword() {
     const { state: remote, updatedAt } = await res.json();
     if (remote) {
       state = remote;
-      if (!state.flights) state.flights = [];
+      migrateState();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
     lastSyncedAt = updatedAt;
@@ -302,7 +358,7 @@ function flightDay(f) {
 // Does this flight match the current view filter?
 function flightMatchesView(flight) {
   if (viewFilter === 'all') return true;
-  return (flight.people || []).some(p => COUPLE_MAP[p] === viewFilter);
+  return (flight.people || []).some(p => getPersonGroup(p) === viewFilter);
 }
 
 // ── View filter helpers ───────────────────────────────────────────────────────
@@ -311,8 +367,8 @@ function flightMatchesView(flight) {
 function eventScope(evt) {
   const people = evt.people || [];
   if (people.length === 0) return 'unassigned';
-  const couples = new Set(people.map(p => COUPLE_MAP[p]).filter(Boolean));
-  return couples.size > 1 ? 'group' : ([...couples][0] || 'group');
+  const groups = new Set(people.map(p => getPersonGroup(p)).filter(Boolean));
+  return groups.size > 1 ? 'group' : ([...groups][0] || 'group');
 }
 
 // Should this event show in the current viewFilter?
@@ -341,7 +397,6 @@ const homeLocStatus    = document.getElementById('home-location-status');
 const homeModalClear   = document.getElementById('home-modal-clear');
 const homeModalCancel  = document.getElementById('home-modal-cancel');
 const homeModalSave    = document.getElementById('home-modal-save');
-const filterBtns   = document.querySelectorAll('.filter-btn');
 const tabBtns      = document.querySelectorAll('.tab-btn');
 const calendarView = document.getElementById('calendar-view');
 const mapView      = document.getElementById('map-view');
@@ -377,7 +432,6 @@ const modalCancel  = document.getElementById('modal-cancel');
 const modalSave    = document.getElementById('modal-save');
 const btnLocate    = document.getElementById('btn-locate');
 const locStatus    = document.getElementById('location-status');
-const peopleChips  = document.querySelectorAll('#people-chips .person-chip');
 
 // ── Layout / sizing ───────────────────────────────────────────────────────────
 
@@ -427,6 +481,7 @@ function render() {
   startDateEl.value = state.startDate || '';
   endDateEl.value   = state.endDate || '';
 
+  renderFilterBar();
   renderTimeGutter();
   renderDays();
   renderUnscheduled();
@@ -680,9 +735,10 @@ function makeEventCard(evt) {
       ppl.className = 'event-people-initials';
       evt.people.forEach(p => {
         const init = document.createElement('div');
-        init.className = `person-initial pi-${p}`;
-        init.textContent = p[0].toUpperCase();
-        init.title = PEOPLE_LABEL[p] || p;
+        init.className = 'person-initial';
+        init.style.background = getPersonColor(p);
+        init.textContent = getPersonName(p)[0].toUpperCase();
+        init.title = getPersonName(p);
         ppl.appendChild(init);
       });
       meta.appendChild(ppl);
@@ -1010,9 +1066,9 @@ async function renderTravelTimes() {
   // Only true misses (not in DB) will hit GraphHopper, staggered as before.
   {
     const neededKeys = new Set();
-    const home = (showHomeTravel && state.home?.lat != null) ? state.home : null;
 
     for (let day = 1; day <= n; day++) {
+      const home = showHomeTravel ? getHomeForDay(day) : null;
       const flightVirtualEvents = (state.flights || [])
         .filter(f => flightDay(f) === day && flightMatchesView(f))
         .flatMap(f => {
@@ -1147,8 +1203,8 @@ async function renderTravelTimes() {
     // ── Home distance indicators ──────────────────────────────────────────
     // For every event not back-to-back with a predecessor → show home → event.
     // For every event not back-to-back with a successor   → show event → home.
-    if (!showHomeTravel || state.home?.lat == null || dayEvents.length === 0) continue;
-    const home = state.home;
+    const home = showHomeTravel ? getHomeForDay(day) : null;
+    if (!home || dayEvents.length === 0) continue;
 
     for (const evt of dayEvents) {
       if (signal.aborted) return;
@@ -1209,13 +1265,63 @@ function onCellClick(e) {
 
 // ── View filter ───────────────────────────────────────────────────────────────
 
-filterBtns.forEach(btn => {
-  btn.addEventListener('click', () => {
-    viewFilter = btn.dataset.view;
-    filterBtns.forEach(b => b.classList.toggle('active', b === btn));
-    render();
+function renderFilterBar() {
+  // Reset viewFilter if its group was deleted
+  if (viewFilter !== 'all' && !(state.groups || []).some(g => g.id === viewFilter)) {
+    viewFilter = 'all';
+  }
+  const container = document.querySelector('.view-filters');
+  container.innerHTML = '';
+
+  const allGroups = [{ id: 'all', name: 'All' }, ...(state.groups || [])];
+  for (const g of allGroups) {
+    const btn = document.createElement('button');
+    btn.className = `filter-btn${viewFilter === g.id ? ' active' : ''}`;
+    btn.dataset.view = g.id;
+    btn.textContent = g.name;
+    btn.addEventListener('click', () => {
+      viewFilter = g.id;
+      container.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b === btn));
+      render();
+    });
+    container.appendChild(btn);
+  }
+}
+
+// ── People chips ──────────────────────────────────────────────────────────────
+
+// Renders people chips into container; selectedClass is 'selected' (events) or 'active' (flights).
+function renderPeopleChips(containerId, selectedIds = [], selectedClass = 'selected') {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.innerHTML = '';
+  const people = state.people || [];
+  if (!people.length) {
+    const hint = document.createElement('span');
+    hint.className = 'no-people-hint';
+    hint.textContent = 'No people added — use 👥 to add.';
+    container.appendChild(hint);
+    return;
+  }
+  // Sort people by group order then by position within group
+  const groupOrder = (state.groups || []).map(g => g.id);
+  const sorted = [...people].sort((a, b) => {
+    const ai = a.groupId ? groupOrder.indexOf(a.groupId) : 999;
+    const bi = b.groupId ? groupOrder.indexOf(b.groupId) : 999;
+    return ai - bi;
   });
-});
+  for (const p of sorted) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'person-chip';
+    chip.dataset.person = p.id;
+    chip.textContent = p.name;
+    chip.style.setProperty('--chip-color', p.color || '#64748b');
+    if (selectedIds.includes(p.id)) chip.classList.add(selectedClass);
+    chip.addEventListener('click', () => chip.classList.toggle(selectedClass));
+    container.appendChild(chip);
+  }
+}
 
 // ── Tab switching ─────────────────────────────────────────────────────────────
 
@@ -1296,8 +1402,9 @@ function renderMap() {
   mapMarkers.forEach(m => m.remove());
   mapMarkers = [];
 
-  // Home marker
-  if (state.home?.lat != null) {
+  // Home marker — show per-day home if a day is filtered, else default
+  const homeForMap = mapDayFilter != null ? getHomeForDay(mapDayFilter) : state.home;
+  if (homeForMap?.lat != null) {
     const homeIcon = L.divIcon({
       html: '<div class="home-marker-icon">🏠</div>',
       className: '',
@@ -1305,10 +1412,10 @@ function renderMap() {
       iconAnchor: [15, 15],
       popupAnchor:[0, -18],
     });
-    const hm = L.marker([state.home.lat, state.home.lng], { icon: homeIcon });
+    const hm = L.marker([homeForMap.lat, homeForMap.lng], { icon: homeIcon });
     hm.bindPopup(`
       <div class="map-popup-title">Home Base</div>
-      <div class="map-popup-meta">${escHtml(state.home.address || '')}</div>
+      <div class="map-popup-meta">${escHtml(homeForMap.address || '')}</div>
     `);
     hm.addTo(leafletMap);
     mapMarkers.push(hm);
@@ -1343,7 +1450,7 @@ function renderMap() {
     const dayLbl  = evt.day != null ? getDayLabel(evt.day) : null;
     const dayStr  = dayLbl ? `Day ${dayLbl.num} · ${dayLbl.dow} ${dayLbl.date}` : 'Unscheduled';
     const timeStr = evt.hour != null ? formatHour(evt.hour) : '';
-    const people  = (evt.people || []).map(p => PEOPLE_LABEL[p] || p).join(', ');
+    const people  = (evt.people || []).map(p => getPersonName(p)).join(', ');
 
     marker.bindPopup(`
       <div class="map-popup-title"><span class="map-popup-num">${num}.</span> ${escHtml(evt.title)}</div>
@@ -1386,7 +1493,7 @@ function renderMap() {
       const m = L.marker([airport.lat, airport.lng], { icon });
       const dayLbl = fDay != null ? getDayLabel(fDay) : null;
       const dayStr = dayLbl ? `Day ${dayLbl.num} · ${dayLbl.dow} ${dayLbl.date}` : '';
-      const people = (f.people || []).map(p => PEOPLE_LABEL[p] || p).join(', ');
+      const people = (f.people || []).map(p => getPersonName(p)).join(', ');
       m.bindPopup(`
         <div class="map-popup-title">${label}</div>
         <div class="map-popup-meta">
@@ -1775,7 +1882,7 @@ function openModal(id = null, prefill = {}) {
     resYes.checked         = !!evt.hasReservation;
     resNo.checked          = !evt.hasReservation;
     resGroup.classList.toggle('hidden', !evt.hasReservation);
-    peopleChips.forEach(c => c.classList.toggle('selected', (evt.people || []).includes(c.dataset.person)));
+    renderPeopleChips('people-chips', evt.people || []);
     if (evt.location?.lat != null) {
       currentLocationData   = evt.location;
       locStatus.className   = 'location-status ok';
@@ -1794,7 +1901,7 @@ function openModal(id = null, prefill = {}) {
     evtRes.value           = '';
     resNo.checked          = true;
     resGroup.classList.add('hidden');
-    peopleChips.forEach(c => c.classList.remove('selected'));
+    renderPeopleChips('people-chips', []);
     modalDelete.classList.add('hidden');
   }
 
@@ -1808,7 +1915,7 @@ function closeModal() {
   currentLocationData = null;
 }
 
-peopleChips.forEach(chip => chip.addEventListener('click', () => chip.classList.toggle('selected')));
+
 [resNo, resYes].forEach(r => r.addEventListener('change', () => resGroup.classList.toggle('hidden', !resYes.checked)));
 modalCancel.addEventListener('click', closeModal);
 modalOverlay.addEventListener('click', e => { if (e.target === modalOverlay) closeModal(); });
@@ -1821,7 +1928,7 @@ modalSave.addEventListener('click', () => {
   const title = evtTitle.value.trim();
   if (!title) { evtTitle.focus(); return; }
 
-  const people  = [...peopleChips].filter(c => c.classList.contains('selected')).map(c => c.dataset.person);
+  const people  = [...document.querySelectorAll('#people-chips .person-chip.selected')].map(c => c.dataset.person);
   const dayVal  = evtDay.value !== ''  ? parseInt(evtDay.value, 10)  : null;
   const hourVal = evtTime.value !== '' ? parseFloat(evtTime.value) : null;
 
@@ -1905,28 +2012,55 @@ function escHtml(str) {
 // ── Home base ────────────────────────────────────────────────────────────────
 
 let pendingHomeLocation = null;
+let homeSelectedDay     = null; // null = default (state.home), number = per-day override
 
 function updateHomeButton() {
-  const hasHome = state.home?.lat != null;
-  btnHome.classList.toggle('is-set', hasHome);
-  homeLabel.textContent = hasHome
+  const hasDefault = state.home?.lat != null;
+  const hasAnyDay  = Object.values(state.homeDays || {}).some(h => h?.lat != null);
+  btnHome.classList.toggle('is-set', hasDefault || hasAnyDay);
+  homeLabel.textContent = hasDefault
     ? (state.home.address?.split(',')[0] || 'Home set')
-    : 'Set home';
+    : hasAnyDay ? 'Home (per day)' : 'Set home';
 }
 
-btnHome.addEventListener('click', () => {
-  pendingHomeLocation    = state.home ? { ...state.home } : null;
-  homeAddressEl.value    = state.home?.address || '';
-  homeLocStatus.textContent = '';
-  homeLocStatus.className   = 'location-status';
-  if (state.home?.lat != null) {
-    homeLocStatus.className   = 'location-status ok';
-    homeLocStatus.textContent = `Saved: ${state.home.lat.toFixed(5)}, ${state.home.lng.toFixed(5)}`;
+function openHomeModal(day = null) {
+  homeSelectedDay = day;
+  const daySelect = document.getElementById('home-day-select');
+
+  // Populate day options
+  daySelect.innerHTML = '<option value="">All days (default)</option>';
+  const n = getDayCount();
+  for (let d = 1; d <= n; d++) {
+    const lbl = getDayLabel(d);
+    const opt = document.createElement('option');
+    opt.value = d;
+    opt.textContent = `Day ${lbl.num} · ${lbl.dow} ${lbl.date}`;
+    daySelect.appendChild(opt);
   }
-  homeModalClear.classList.toggle('hidden', !state.home);
+  daySelect.value = day != null ? String(day) : '';
+
+  function loadForSelectedDay() {
+    const d = daySelect.value ? parseInt(daySelect.value) : null;
+    homeSelectedDay = d;
+    const home = d != null ? (state.homeDays?.[String(d)] || null) : (state.home || null);
+    pendingHomeLocation = home ? { ...home } : null;
+    homeAddressEl.value = home?.address || '';
+    homeLocStatus.textContent = '';
+    homeLocStatus.className = 'location-status';
+    if (home?.lat != null) {
+      homeLocStatus.className   = 'location-status ok';
+      homeLocStatus.textContent = `Saved: ${home.lat.toFixed(5)}, ${home.lng.toFixed(5)}`;
+    }
+    homeModalClear.classList.toggle('hidden', !home);
+  }
+
+  loadForSelectedDay();
+  daySelect.onchange = loadForSelectedDay;
   homeModalOverlay.classList.remove('hidden');
   setTimeout(() => homeAddressEl.focus(), 50);
-});
+}
+
+btnHome.addEventListener('click', () => openHomeModal(null));
 
 btnHomeLocate.addEventListener('click', async () => {
   btnHomeLocate.classList.add('loading');
@@ -1968,24 +2102,37 @@ btnHomeLocate.addEventListener('click', async () => {
 });
 
 homeModalSave.addEventListener('click', () => {
+  const addressText = homeAddressEl.value.trim();
+  let val = null;
   if (pendingHomeLocation) {
-    state.home = { ...pendingHomeLocation, address: homeAddressEl.value.trim() || pendingHomeLocation.address };
-  } else if (homeAddressEl.value.trim()) {
-    // Saved address text without geocoding — store text only, no coords yet
-    state.home = { address: homeAddressEl.value.trim(), lat: null, lng: null };
+    val = { ...pendingHomeLocation, address: addressText || pendingHomeLocation.address };
+  } else if (addressText) {
+    val = { address: addressText, lat: null, lng: null };
+  }
+  if (homeSelectedDay != null) {
+    if (!state.homeDays) state.homeDays = {};
+    state.homeDays[String(homeSelectedDay)] = val;
+  } else {
+    state.home = val;
   }
   save();
   updateHomeButton();
   homeModalOverlay.classList.add('hidden');
   if (activeTab === 'map') renderMap();
+  if (activeTab === 'calendar') renderTravelTimes();
 });
 
 homeModalClear.addEventListener('click', () => {
-  state.home = null;
+  if (homeSelectedDay != null) {
+    if (state.homeDays) delete state.homeDays[String(homeSelectedDay)];
+  } else {
+    state.home = null;
+  }
   save();
   updateHomeButton();
   homeModalOverlay.classList.add('hidden');
   if (activeTab === 'map') renderMap();
+  if (activeTab === 'calendar') renderTravelTimes();
 });
 
 homeModalCancel.addEventListener('click', () => homeModalOverlay.classList.add('hidden'));
@@ -1995,13 +2142,138 @@ homeModalOverlay.addEventListener('keydown', e => {
   if (e.key === 'Enter')  homeModalSave.click();
 });
 
+// ── People manager ────────────────────────────────────────────────────────────
+
+const peopleModalOverlay = document.getElementById('people-modal-overlay');
+const peopleManagerContent = document.getElementById('people-manager-content');
+
+function renderPeopleManager() {
+  peopleManagerContent.innerHTML = '';
+  const groups  = state.groups  || [];
+  const people  = state.people  || [];
+
+  if (!groups.length && !people.some(p => !p.groupId)) {
+    const empty = document.createElement('p');
+    empty.className = 'no-people-hint';
+    empty.textContent = 'No groups yet. Add one below.';
+    peopleManagerContent.appendChild(empty);
+  }
+
+  for (const group of groups) {
+    const section = document.createElement('div');
+    section.className = 'pm-group';
+
+    // Group header: editable name + remove button
+    const header = document.createElement('div');
+    header.className = 'pm-group-header';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'pm-group-name';
+    nameInput.value = group.name;
+    nameInput.addEventListener('change', () => {
+      group.name = nameInput.value.trim() || group.name;
+      save(); renderFilterBar();
+    });
+    header.appendChild(nameInput);
+
+    const removeGroup = document.createElement('button');
+    removeGroup.className = 'btn-ghost pm-btn-sm';
+    removeGroup.textContent = 'Remove';
+    removeGroup.addEventListener('click', () => {
+      // Move people in this group to ungrouped
+      for (const p of state.people) { if (p.groupId === group.id) p.groupId = null; }
+      state.groups = state.groups.filter(g => g.id !== group.id);
+      save(); renderPeopleManager(); renderFilterBar();
+    });
+    header.appendChild(removeGroup);
+    section.appendChild(header);
+
+    // Members
+    const members = document.createElement('div');
+    members.className = 'pm-members';
+    const groupPeople = people.filter(p => p.groupId === group.id);
+    for (const person of groupPeople) {
+      const tag = document.createElement('span');
+      tag.className = 'pm-person-tag';
+      tag.style.setProperty('--chip-color', person.color || '#64748b');
+
+      const nameEl = document.createElement('span');
+      nameEl.textContent = person.name;
+      tag.appendChild(nameEl);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'pm-person-remove';
+      removeBtn.textContent = '×';
+      removeBtn.title = `Remove ${person.name}`;
+      removeBtn.addEventListener('click', () => {
+        state.people = state.people.filter(p => p.id !== person.id);
+        save(); renderPeopleManager();
+      });
+      tag.appendChild(removeBtn);
+      members.appendChild(tag);
+    }
+    section.appendChild(members);
+
+    // Add person input
+    const addRow = document.createElement('div');
+    addRow.className = 'pm-add-person-row';
+    const addInput = document.createElement('input');
+    addInput.type = 'text';
+    addInput.placeholder = 'Add person…';
+    addInput.className = 'pm-add-input';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn-ghost pm-btn-sm';
+    addBtn.textContent = 'Add';
+    const doAdd = () => {
+      const name = addInput.value.trim();
+      if (!name) return;
+      const base = slugify(name);
+      // Ensure unique ID
+      let id = base, n = 1;
+      while (state.people.some(p => p.id === id)) id = `${base}_${n++}`;
+      state.people.push({ id, name, groupId: group.id, color: nextPersonColor() });
+      addInput.value = '';
+      save(); renderPeopleManager();
+    };
+    addBtn.addEventListener('click', doAdd);
+    addInput.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
+    addRow.appendChild(addInput);
+    addRow.appendChild(addBtn);
+    section.appendChild(addRow);
+    peopleManagerContent.appendChild(section);
+  }
+}
+
+document.getElementById('btn-add-group').addEventListener('click', () => {
+  const id = `group_${uid()}`;
+  state.groups.push({ id, name: 'New Group' });
+  save(); renderPeopleManager(); renderFilterBar();
+});
+
+document.getElementById('btn-manage-people').addEventListener('click', () => {
+  renderPeopleManager();
+  peopleModalOverlay.classList.remove('hidden');
+});
+
+document.getElementById('people-modal-done').addEventListener('click', () => {
+  peopleModalOverlay.classList.add('hidden');
+  render();
+});
+
+peopleModalOverlay.addEventListener('click', e => {
+  if (e.target === peopleModalOverlay) {
+    peopleModalOverlay.classList.add('hidden');
+    render();
+  }
+});
+
 // ── Flights ───────────────────────────────────────────────────────────────────
 
 const flightModalOverlay = document.getElementById('flight-modal-overlay');
 const flightModalTitle   = document.getElementById('flight-modal-title');
 const fltNumber          = document.getElementById('flt-number');
 const fltDate            = document.getElementById('flt-date');
-const fltPeopleChips     = document.querySelectorAll('#flt-people-chips .person-chip');
 const fltLookup          = document.getElementById('flt-lookup');
 const fltStatus          = document.getElementById('flt-status');
 const fltResults         = document.getElementById('flt-results');
@@ -2027,7 +2299,7 @@ function openFlightModal(id = null) {
     if (f) {
       fltNumber.value = f.number;
       fltDate.value   = f.date;
-      fltPeopleChips.forEach(c => c.classList.toggle('active', (f.people || []).includes(c.dataset.person)));
+      renderPeopleChips('flt-people-chips', f.people || [], 'active');
       fltSelectedResult = f;
       // depHourCDMX is already stored in CDMX time, so label both as CDMX
       fltDepTzEl.textContent = '(CDMX time)';
@@ -2041,7 +2313,7 @@ function openFlightModal(id = null) {
     fltNumber.value = '';
     fltDate.value   = state.startDate || '';
     fltSave.textContent = 'Add Flight';
-    fltPeopleChips.forEach(c => c.classList.remove('active'));
+    renderPeopleChips('flt-people-chips', [], 'active');
     fltDepTime.value = '';
     fltArrTime.value = '';
     fltTimesEl.classList.add('hidden');
@@ -2051,9 +2323,6 @@ function openFlightModal(id = null) {
   fltNumber.focus();
 }
 
-fltPeopleChips.forEach(chip => {
-  chip.addEventListener('click', () => chip.classList.toggle('active'));
-});
 
 fltLookup.addEventListener('click', async () => {
   const num  = fltNumber.value.trim();
@@ -2215,7 +2484,7 @@ fltSave.addEventListener('click', () => {
   const depIso   = buildIsoInTz(depDate, fltDepTime.value, fltSelectedResult.departure.tz);
   const depCDMX  = depIso ? toTripHour(depIso) : depHour; // fallback: treat as CDMX directly
 
-  const people = [...fltPeopleChips].filter(c => c.classList.contains('active')).map(c => c.dataset.person);
+  const people = [...document.querySelectorAll('#flt-people-chips .person-chip.active')].map(c => c.dataset.person);
   if (!state.flights) state.flights = [];
 
   const entry = {
