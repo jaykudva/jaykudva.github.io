@@ -1566,40 +1566,38 @@ async function resolveGoogleMapsCoords(url) {
 }
 
 // Geocode a free-text address via Nominatim (OSM, no API key required).
-// Tries progressively simplified variants to handle abbreviations and local formatting.
 async function geocodeAddress(text) {
+  // Detect likely country for a narrowing hint (improves hit rate, not required).
+  const countryCode =
+    /japan|tokyo|osaka|kyoto|nagoya|fukuoka|\bjp\b/i.test(text)           ? 'jp' :
+    /\bcdmx\b|ciudad de m[eé]xico|mexico city|\bmx\b/i.test(text)        ? 'mx' :
+    /\busa\b|\bunited states\b|new york|los angeles|chicago/i.test(text)  ? 'us' :
+    null;
+
+  // CDMX abbreviation normalisation
   const normalize = s => s
-    .replace(/\bNte\b\.?/gi, 'Norte')
-    .replace(/\bSur\b/gi, 'Sur')
-    .replace(/\bOte\b\.?/gi, 'Oriente')
-    .replace(/\bPte\b\.?/gi, 'Poniente')
-    .replace(/\bCDMX\b/gi, 'Ciudad de México')
-    .replace(/\bCol\b\.?/gi, 'Colonia')
+    .replace(/\bNte\b\.?/gi, 'Norte').replace(/\bSur\b/gi, 'Sur')
+    .replace(/\bOte\b\.?/gi, 'Oriente').replace(/\bPte\b\.?/gi, 'Poniente')
+    .replace(/\bCDMX\b/gi, 'Ciudad de México').replace(/\bCol\b\.?/gi, 'Colonia')
     .trim();
 
-  const parts = text.split(',').map(s => s.trim()).filter(Boolean);
+  const q = normalize(text);
 
-  const queries = [
-    normalize(text),
-    // street + colonia + city
-    parts.length >= 3 ? normalize([parts[0], parts[1], 'Ciudad de México, Mexico'].join(', ')) : null,
-    // just street + city
-    parts.length >= 1 ? normalize([parts[0], 'Ciudad de México, Mexico'].join(', ')) : null,
-  ].filter(Boolean);
-
-  for (const q of queries) {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=mx`;
+  async function nominatim(query, cc) {
+    const cc_param = cc ? `&countrycodes=${cc}` : '';
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1${cc_param}`;
     const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
     const data = await res.json();
-    if (data.length) {
-      return {
-        lat:     parseFloat(data[0].lat),
-        lng:     parseFloat(data[0].lon),
-        address: data[0].display_name,
-      };
-    }
+    if (data.length) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), address: data[0].display_name };
+    return null;
   }
-  return null;
+
+  // Try with country hint first (faster, more accurate), then without
+  if (countryCode) {
+    const r = await nominatim(q, countryCode);
+    if (r) return r;
+  }
+  return await nominatim(q, null);
 }
 
 btnLocate.addEventListener('click', () => resolvePlace(evtPlace.value.trim()));
