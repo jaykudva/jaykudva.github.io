@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Japan Bingo 🎌</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ── Login ────────────────────────────────────────────────────────────── -->
+  <div id="view-login" class="view">
+    <div class="login-wrap">
+      <div class="login-card">
+        <div class="login-hero">🎌</div>
+        <h1>Japan Bingo</h1>
+        <p class="login-sub">Maho &amp; Donovan's Wedding</p>
+        <div class="form-field">
+          <input id="login-username" type="text" placeholder="Username"
+            autocomplete="username" autocapitalize="none" spellcheck="false">
+        </div>
+        <div class="form-field">
+          <input id="login-password" type="password" placeholder="Password"
+            autocomplete="current-password">
+        </div>
+        <button id="login-btn" class="btn-primary">Let's go</button>
+        <p id="login-error" class="error-text hidden"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Game (my board) ──────────────────────────────────────────────────── -->
+  <div id="view-game" class="view hidden">
+    <header class="app-header">
+      <span id="header-name" class="header-name"></span>
+      <div class="board-pills">
+        <button class="pill active" data-board="standard">Standard</button>
+        <button class="pill" data-board="extra">Extra</button>
+      </div>
+    </header>
+    <div class="refresh-note">
+      📡 Playing on multiple devices? Refresh to sync.
+    </div>
+    <div class="grid-wrap">
+      <div id="my-grid" class="bingo-grid"></div>
+    </div>
+    <div id="bingo-banner" class="bingo-banner hidden">🎉 BINGO! 🎉</div>
+  </div>
+
+  <!-- ── Players ──────────────────────────────────────────────────────────── -->
+  <div id="view-players" class="view hidden">
+    <header class="app-header">
+      <span class="header-title">Players</span>
+      <button id="players-refresh-btn" class="icon-btn">↻</button>
+    </header>
+    <div id="players-list" class="list-body"></div>
+  </div>
+
+  <!-- ── Player's board (read-only) ───────────────────────────────────────── -->
+  <div id="view-player-board" class="view hidden">
+    <header class="app-header">
+      <button id="back-from-player" class="icon-btn">←</button>
+      <span id="player-board-title" class="header-title"></span>
+      <span></span>
+    </header>
+    <div class="board-pills" id="player-board-pills">
+      <button class="pill active" data-board="standard">Standard</button>
+      <button class="pill" data-board="extra">Extra</button>
+    </div>
+    <div class="grid-wrap">
+      <div id="player-grid" class="bingo-grid"></div>
+    </div>
+  </div>
+
+  <!-- ── Admin ────────────────────────────────────────────────────────────── -->
+  <div id="view-admin" class="view hidden">
+    <header class="app-header">
+      <span class="header-title">Admin</span>
+    </header>
+    <div class="admin-tabs">
+      <button class="admin-tab active" data-tab="questions">Questions</button>
+      <button class="admin-tab" data-tab="users">Users</button>
+    </div>
+    <div id="admin-questions-pane" class="admin-pane"></div>
+    <div id="admin-users-pane" class="admin-pane hidden"></div>
+    <button id="admin-add-btn" class="fab">+</button>
+  </div>
+
+  <!-- ── Square modal ─────────────────────────────────────────────────────── -->
+  <div id="modal-overlay" class="overlay hidden">
+    <div id="modal-sheet" class="sheet">
+      <div class="sheet-handle"></div>
+      <button id="modal-close" class="sheet-close">×</button>
+
+      <span id="modal-badge" class="badge"></span>
+      <h2 id="modal-title" class="sheet-title"></h2>
+      <p id="modal-desc" class="sheet-desc"></p>
+
+      <!-- Answer section -->
+      <div id="modal-answer-section" class="hidden">
+        <input id="modal-answer-input" type="text" class="sheet-input"
+          placeholder="Type your answer…" autocomplete="off" autocapitalize="none">
+        <p id="modal-answer-error" class="error-text hidden"></p>
+        <button id="modal-submit-btn" class="btn-primary">Submit Answer</button>
+      </div>
+
+      <!-- Honor section -->
+      <div id="modal-honor-section" class="hidden">
+        <label class="honor-row">
+          <input id="modal-honor-check" type="checkbox">
+          <span>I solemnly swear I have sent photographic evidence to Jay 🙏</span>
+        </label>
+        <button id="modal-honor-btn" class="btn-primary">Mark Complete</button>
+      </div>
+
+      <button id="modal-unmark-btn" class="btn-ghost hidden">Unmark this square</button>
+    </div>
+  </div>
+
+  <!-- ── Question form modal (admin) ──────────────────────────────────────── -->
+  <div id="qform-overlay" class="overlay hidden">
+    <div id="qform-sheet" class="sheet">
+      <div class="sheet-handle"></div>
+      <button id="qform-close" class="sheet-close">×</button>
+      <h2 id="qform-heading" class="sheet-title" style="margin-bottom:20px">Add Question</h2>
+
+      <input type="hidden" id="qf-id">
+
+      <div class="field-group">
+        <label class="field-label">Board</label>
+        <select id="qf-board" class="field-input">
+          <option value="standard">Standard</option>
+          <option value="extra">Extra</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Cell title <span class="field-hint">(keep it short — fits ~5 words on grid)</span></label>
+        <input id="qf-title" type="text" class="field-input" placeholder="e.g. Eat takoyaki">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Full description</label>
+        <textarea id="qf-description" class="field-input" rows="3"
+          placeholder="The actual challenge or question shown when they tap the cell…"></textarea>
+      </div>
+      <div class="field-group">
+        <label class="field-label">Type</label>
+        <select id="qf-type" class="field-input">
+          <option value="honor">Honor system</option>
+          <option value="answer">Requires correct answer</option>
+        </select>
+      </div>
+      <div id="qf-answer-group" class="field-group hidden">
+        <label class="field-label">Correct answer <span class="field-hint">(case-insensitive)</span></label>
+        <input id="qf-answer" type="text" class="field-input" placeholder="e.g. shibuya">
+      </div>
+
+      <button id="qform-save-btn" class="btn-primary" style="margin-top:8px">Save</button>
+    </div>
+  </div>
+
+  <!-- ── User form modal (admin) ──────────────────────────────────────────── -->
+  <div id="uform-overlay" class="overlay hidden">
+    <div id="uform-sheet" class="sheet">
+      <div class="sheet-handle"></div>
+      <button id="uform-close" class="sheet-close">×</button>
+      <h2 class="sheet-title" style="margin-bottom:20px">Add Player</h2>
+
+      <div class="field-group">
+        <label class="field-label">Display name</label>
+        <input id="uf-displayname" type="text" class="field-input" placeholder="e.g. Abi">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Username <span class="field-hint">(lowercase, no spaces)</span></label>
+        <input id="uf-username" type="text" class="field-input" placeholder="e.g. abi"
+          autocapitalize="none" spellcheck="false">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Password</label>
+        <input id="uf-password" type="text" class="field-input" placeholder="Pre-set password">
+      </div>
+      <div class="field-group">
+        <label class="honor-row" style="gap:10px">
+          <input id="uf-admin" type="checkbox">
+          <span style="font-size:14px">Admin access</span>
+        </label>
+      </div>
+
+      <button id="uform-save-btn" class="btn-primary" style="margin-top:8px">Add Player</button>
+      <p id="uform-error" class="error-text hidden"></p>
+    </div>
+  </div>
+
+  <!-- ── Bottom nav ───────────────────────────────────────────────────────── -->
+  <nav id="bottom-nav" class="bottom-nav hidden">
+    <button class="nav-btn active" data-view="game">
+      <span class="nav-icon">⊞</span>
+      <span class="nav-label">Board</span>
+    </button>
+    <button class="nav-btn" data-view="players">
+      <span class="nav-icon">👥</span>
+      <span class="nav-label">Players</span>
+    </button>
+    <button class="nav-btn" id="admin-nav-btn" data-view="admin" style="display:none">
+      <span class="nav-icon">⚙️</span>
+      <span class="nav-label">Admin</span>
+    </button>
+    <button class="nav-btn" id="logout-btn">
+      <span class="nav-icon">↩</span>
+      <span class="nav-label">Logout</span>
+    </button>
+  </nav>
+
+  <script src="app.js"></script>
+</body>
+</html>
