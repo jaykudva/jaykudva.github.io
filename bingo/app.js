@@ -3,7 +3,7 @@
 const API =
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://localhost:3002'
-    : 'https://japan-bingo-br5xk542g-jays-projects-aa11c69a.vercel.app'; // <-- update after first deploy
+    : 'https://japan-bingo.vercel.app';
 
 // ── State ──────────────────────────────────────────────────────────────────────
 let me            = null;   // { id, username, displayName, isAdmin, password }
