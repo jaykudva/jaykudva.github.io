@@ -64,6 +64,7 @@ function doLogout() {
   me         = null;
   boardCache = { standard: null, extra: null };
   localStorage.removeItem('bingo_me');
+  $('admin-nav-btn').style.display = 'none';
   showView('login');
   $('bottom-nav').classList.add('hidden');
 }
@@ -76,6 +77,22 @@ async function enterApp() {
   showView('game');
   setNavActive('game');
   loadMyBoard(currentBoard);
+
+  const seenKey = `bingo_rules_seen_${me.username}`;
+  if (!localStorage.getItem(seenKey)) {
+    localStorage.setItem(seenKey, '1');
+    setTimeout(openRules, 400); // slight delay so the board loads behind it
+  }
+}
+
+function openRules() {
+  const el = $('rules-overlay');
+  el.classList.remove('hidden');
+  el.style.display = 'flex';
+}
+
+function closeRules() {
+  $('rules-overlay').classList.add('hidden');
 }
 
 async function loadGameState() {
@@ -649,6 +666,12 @@ function init() {
   $('modal-honor-btn').addEventListener('click', submitHonor);
   $('modal-unmark-btn').addEventListener('click', unmarkSquare);
   $('modal-answer-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitAnswer(); });
+
+  // Rules modal
+  $('rules-btn').addEventListener('click', openRules);
+  $('rules-close').addEventListener('click', closeRules);
+  $('rules-got-it').addEventListener('click', closeRules);
+  $('rules-overlay').addEventListener('click', e => { if (e.target === $('rules-overlay')) closeRules(); });
 
   // Admin game control
   $('game-toggle-btn').addEventListener('click', toggleGameState);

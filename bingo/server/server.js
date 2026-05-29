@@ -25,6 +25,23 @@ function getSupabase() {
   return createClient(url, key, { realtime: { transport: WebSocket } });
 }
 
+function isTestUser(username) {
+  return username.includes('_test') || username === 'username';
+}
+
+function fakeBoard(type) {
+  return Array.from({ length: 25 }, (_, i) => {
+    if (i === 12) return { ...FREE_SQUARE_CELL, completed: false, free: true };
+    return {
+      id:          `fake-${i}`,
+      title:       'Sample question',
+      description: 'The real questions are a surprise. This is just a placeholder so you can see how the game works.',
+      type:        'honor',
+      completed:   false,
+    };
+  });
+}
+
 function shuffle(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -142,6 +159,10 @@ app.get('/api/board/:type', requireAuth, async (req, res) => {
   const { type } = req.params;
   if (!['standard', 'extra'].includes(type)) return res.status(400).json({ error: 'Invalid board type' });
 
+  if (isTestUser(req.user.username)) {
+    return res.json({ board: type, cells: fakeBoard(type) });
+  }
+
   const sb = getSupabase();
 
   try {
@@ -174,6 +195,13 @@ app.get('/api/board/:type', requireAuth, async (req, res) => {
 app.get('/api/players/:userId/board/:type', requireAuth, async (req, res) => {
   const { userId, type } = req.params;
   if (!['standard', 'extra'].includes(type)) return res.status(400).json({ error: 'Invalid board type' });
+
+  // Look up the target user to check if they're a test user
+  const sb0 = getSupabase();
+  const { data: targetUser } = await sb0.from('bingo_users').select('username').eq('id', userId).single();
+  if (targetUser && isTestUser(targetUser.username)) {
+    return res.json({ board: type, cells: fakeBoard(type) });
+  }
 
   const sb = getSupabase();
   const { data: assignment } = await sb
@@ -211,6 +239,8 @@ app.post('/api/complete', requireAuth, async (req, res) => {
   const { questionId, answerGiven } = req.body;
   if (!questionId) return res.status(400).json({ error: 'Missing questionId' });
 
+  if (isTestUser(req.user.username)) return res.json({ ok: true });
+
   const sb = getSupabase();
 
   const { data: settings } = await sb
@@ -245,6 +275,7 @@ app.post('/api/complete', requireAuth, async (req, res) => {
 });
 
 app.delete('/api/complete/:questionId', requireAuth, async (req, res) => {
+  if (isTestUser(req.user.username)) return res.json({ ok: true });
   const sb = getSupabase();
   const { error } = await sb.from('bingo_completions')
     .delete()
@@ -299,6 +330,7 @@ app.get('/api/players', requireAuth, async (req, res) => {
   }
 
   const players = (users || [])
+    .filter(u => !isTestUser(u.username))
     .map(u => ({
       id: u.id,
       username: u.username,

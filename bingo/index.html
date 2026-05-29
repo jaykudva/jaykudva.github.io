@@ -6,6 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Japan Bingo 🎌</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎌</text></svg>">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -216,11 +217,51 @@
       <span class="nav-icon">⚙️</span>
       <span class="nav-label">Admin</span>
     </button>
+    <button class="nav-btn" id="rules-btn" onclick="openRules()">
+      <span class="nav-icon">📜</span>
+      <span class="nav-label">Rules</span>
+    </button>
     <button class="nav-btn" id="logout-btn">
       <span class="nav-icon">↩</span>
       <span class="nav-label">Logout</span>
     </button>
   </nav>
+
+  <!-- ── Rules modal ──────────────────────────────────────────────────────────── -->
+  <div id="rules-overlay" class="overlay hidden">
+    <div class="sheet">
+      <div class="sheet-handle"></div>
+      <button id="rules-close" class="sheet-close">×</button>
+
+      <div class="rules-hero">📜</div>
+      <h2 class="sheet-title">How to Play</h2>
+
+      <div class="rules-body">
+        <p class="rules-goal">Complete as many squares as possible before Jay ends the game. Most squares wins.</p>
+
+        <div class="rules-section">
+          <div class="rules-row">
+            <span class="rules-icon">🤞</span>
+            <div>
+              <strong>Honor system</strong>
+              <p>Do the challenge, send proof to Jay (photo, video, or voice note), then tap the square and mark it done.</p>
+            </div>
+          </div>
+          <div class="rules-row">
+            <span class="rules-icon">🔑</span>
+            <div>
+              <strong>Answer required</strong>
+              <p>Type the correct answer directly into the app to unlock the square.</p>
+            </div>
+          </div>
+        </div>
+
+        <p class="rules-note">When Jay calls game over, the final leaderboard appears in the Players tab. Good luck 🎌</p>
+      </div>
+
+      <button id="rules-got-it" class="btn-primary">Got it</button>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
