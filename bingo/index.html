@@ -40,6 +40,9 @@
         <button class="pill" data-board="extra">Extra</button>
       </div>
     </header>
+    <div id="game-over-banner" class="game-over-banner hidden">
+      🎌 Game over! Check the leaderboard →
+    </div>
     <div class="refresh-note">
       📡 Playing on multiple devices? Refresh to sync.
     </div>
@@ -79,6 +82,13 @@
     <header class="app-header">
       <span class="header-title">Admin</span>
     </header>
+    <div id="game-control-bar" class="game-control-bar">
+      <div>
+        <div id="game-status-label" class="game-status-label"></div>
+        <div id="game-status-sub" class="game-status-sub"></div>
+      </div>
+      <button id="game-toggle-btn" class="game-toggle-btn"></button>
+    </div>
     <div class="admin-tabs">
       <button class="admin-tab active" data-tab="questions">Questions</button>
       <button class="admin-tab" data-tab="users">Users</button>

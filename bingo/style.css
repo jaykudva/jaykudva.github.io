@@ -43,6 +43,12 @@ html, body {
   background: linear-gradient(160deg, #e8476a 0%, #ff8fa3 55%, #ffd6df 100%);
 }
 
+#view-game {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 /* ── Login ──────────────────────────────────────────────────────────────────── */
 
 .login-wrap {
@@ -213,17 +219,21 @@ html, body {
 /* ── Bingo grid ─────────────────────────────────────────────────────────────── */
 
 .grid-wrap {
-  padding: 10px 8px 16px;
+  flex: 1;
+  min-height: 0;
+  padding: 6px 8px;
+  position: relative;
 }
 
 .bingo-grid {
   display: grid;
+  height: 100%;
   grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: repeat(5, 1fr);
   gap: 5px;
 }
 
 .bingo-cell {
-  aspect-ratio: 1;
   background: var(--surface);
   border: 1.5px solid var(--border);
   border-radius: 9px;
@@ -286,16 +296,42 @@ html, body {
   line-height: 1;
 }
 
+/* ── Free square ────────────────────────────────────────────────────────────── */
+
+.bingo-cell.free {
+  background: #1a1a2e;
+  border-color: #1a1a2e;
+  color: #fff;
+  cursor: default;
+  font-weight: 700;
+  font-size: 8px;
+  letter-spacing: .1px;
+}
+
+.bingo-cell.free:active { transform: none; }
+
+.bingo-cell.free.bingo-line {
+  background: #1a1a2e;
+  box-shadow: 0 0 0 2px var(--gold-dark);
+}
+
 /* ── Bingo banner ───────────────────────────────────────────────────────────── */
 
 .bingo-banner {
+  position: absolute;
+  bottom: 12px;
+  left: 8px;
+  right: 8px;
   text-align: center;
   font-size: 28px;
   font-weight: 900;
-  padding: 12px;
+  padding: 10px;
   color: var(--red);
   letter-spacing: 2px;
+  background: rgba(255,255,255,.92);
+  border-radius: 12px;
   animation: pop .5s ease infinite alternate;
+  pointer-events: none;
 }
 
 @keyframes pop {
@@ -665,6 +701,88 @@ textarea.field-input {
 
 .nav-icon  { font-size: 20px; line-height: 1; }
 .nav-label { font-size: 10px; font-weight: 500; }
+
+/* ── Misc ───────────────────────────────────────────────────────────────────── */
+
+/* ── Game over banner ───────────────────────────────────────────────────────── */
+
+.game-over-banner {
+  background: #1a1a2e;
+  color: #fff;
+  text-align: center;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: .2px;
+}
+
+/* ── Leaderboard (players view) ─────────────────────────────────────────────── */
+
+.leaderboard-header {
+  padding: 14px 16px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  color: var(--muted);
+}
+
+.player-row {
+  position: relative;
+}
+
+.player-rank {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--border);
+  min-width: 32px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.player-rank.top { color: var(--gold-dark); }
+
+.player-row.winner {
+  border-color: var(--gold-dark);
+  background: #fffbe8;
+}
+
+/* ── Admin game control ──────────────────────────────────────────────────────── */
+
+.game-control-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.game-status-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.game-status-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+.game-toggle-btn {
+  padding: 9px 18px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.game-toggle-btn.end  { background: #e74c3c; color: #fff; }
+.game-toggle-btn.start { background: var(--green); color: #fff; }
 
 /* ── Misc ───────────────────────────────────────────────────────────────────── */
 

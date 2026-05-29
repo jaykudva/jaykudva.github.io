@@ -12,6 +12,8 @@ let boardCache    = { standard: null, extra: null };
 let modalCell     = null;
 let viewedPlayer  = null;
 let adminTab      = 'questions';
+let gameActive    = true;
+let gameEndedAt   = null;
 
 // ── API helpers ────────────────────────────────────────────────────────────────
 
@@ -24,9 +26,11 @@ function authHeader() {
 }
 
 async function api(method, path, body) {
+  const headers = authHeader();
+  if (body != null) headers['Content-Type'] = 'application/json';
   const res = await fetch(API + path, {
     method,
-    headers: authHeader(),
+    headers,
     body: body != null ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
@@ -64,13 +68,25 @@ function doLogout() {
   $('bottom-nav').classList.add('hidden');
 }
 
-function enterApp() {
+async function enterApp() {
   $('bottom-nav').classList.remove('hidden');
   if (me.isAdmin) $('admin-nav-btn').style.display = '';
   $('header-name').textContent = me.displayName;
+  await loadGameState();
   showView('game');
   setNavActive('game');
   loadMyBoard(currentBoard);
+}
+
+async function loadGameState() {
+  try {
+    const data  = await api('GET', '/api/game-state');
+    gameActive  = data.active;
+    gameEndedAt = data.endedAt;
+    $('game-over-banner').classList.toggle('hidden', gameActive);
+  } catch {
+    gameActive = true;
+  }
 }
 
 // ── Routing / views ────────────────────────────────────────────────────────────
@@ -120,14 +136,15 @@ function loadingGrid(grid) {
 
 function renderGrid(grid, cells, interactive) {
   const winSet = getBingoWinSet(cells);
-  $('bingo-banner').classList.toggle('hidden', winSet.size === 0);
+  if ($('bingo-banner')) $('bingo-banner').classList.toggle('hidden', winSet.size === 0);
 
   grid.innerHTML = cells.map((cell, i) => {
-    const done  = cell.completed;
-    const win   = winSet.has(i);
-    const cls   = ['bingo-cell', done ? 'completed' : '', win ? 'bingo-line' : ''].filter(Boolean).join(' ');
+    const isFree = cell.free === true;
+    const done   = cell.completed;
+    const win    = winSet.has(i);
+    const cls    = ['bingo-cell', isFree ? 'free' : '', done && !isFree ? 'completed' : '', win ? 'bingo-line' : ''].filter(Boolean).join(' ');
     return `<div class="${cls}" data-i="${i}">
-      ${done ? '<span class="cell-check">✓</span>' : ''}
+      ${done && !isFree ? '<span class="cell-check">✓</span>' : ''}
       <span>${esc(cell.title)}</span>
     </div>`;
   }).join('');
@@ -161,6 +178,7 @@ function getBingoWinSet(cells) {
 // ── Square modal ───────────────────────────────────────────────────────────────
 
 function openModal(cell) {
+  if (!gameActive && !cell.completed) return;
   modalCell = cell;
 
   const badge = $('modal-badge');
@@ -276,6 +294,7 @@ function updateCellLocally(questionId, completed) {
 async function loadPlayers() {
   showView('players');
   setNavActive('players');
+  await loadGameState();
   $('players-list').innerHTML = '<div class="empty"><div class="empty-icon">⏳</div></div>';
   try {
     const data = await api('GET', '/api/players');
@@ -290,15 +309,30 @@ function renderPlayers(players) {
     $('players-list').innerHTML = '<div class="empty"><div class="empty-icon">👥</div><p>No players yet</p></div>';
     return;
   }
-  $('players-list').innerHTML = players.map(p => `
-    <div class="player-row" data-id="${p.id}" data-name="${esc(p.displayName)}">
-      <div>
-        <div class="player-name">${esc(p.displayName)}</div>
-        <div class="player-sub">Standard: ${p.completions.standard}/25 · Extra: ${p.completions.extra}/25</div>
-      </div>
-      <div class="player-score">${p.completions.standard + p.completions.extra}</div>
-    </div>
-  `).join('');
+
+  const rankEmoji = ['🥇', '🥈', '🥉'];
+  const heading   = gameActive ? 'Live Standings' : '🎌 Final Results';
+  const endNote   = !gameActive && gameEndedAt
+    ? `Game ended ${new Date(gameEndedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+    : '';
+
+  $('players-list').innerHTML = `
+    <div class="leaderboard-header">${heading}${endNote ? ` · ${endNote}` : ''}</div>
+    ${players.map((p, i) => {
+      const total   = p.completions.standard + p.completions.extra;
+      const isFirst = i === 0 && total > 0;
+      const rank    = rankEmoji[i] ?? `${i + 1}`;
+      return `
+        <div class="player-row${isFirst && !gameActive ? ' winner' : ''}" data-id="${p.id}" data-name="${esc(p.displayName)}">
+          <div class="player-rank${i < 3 ? ' top' : ''}">${rank}</div>
+          <div style="flex:1;min-width:0">
+            <div class="player-name">${esc(p.displayName)}${isFirst && !gameActive ? ' 🏆' : ''}</div>
+            <div class="player-sub">Std: ${p.completions.standard}/25 · Xtr: ${p.completions.extra}/25</div>
+          </div>
+          <div class="player-score">${total}</div>
+        </div>`;
+    }).join('')}
+  `;
 
   $('players-list').querySelectorAll('.player-row').forEach(el => {
     el.addEventListener('click', () => openPlayerBoard({ id: el.dataset.id, displayName: el.dataset.name }));
@@ -337,10 +371,50 @@ async function loadPlayerBoard(type) {
 
 // ── Admin ──────────────────────────────────────────────────────────────────────
 
-function openAdmin() {
+async function openAdmin() {
   showView('admin');
   setNavActive('admin');
+  await loadGameState();
+  updateAdminGameControl();
   switchAdminTab(adminTab);
+}
+
+function updateAdminGameControl() {
+  const label  = $('game-status-label');
+  const sub    = $('game-status-sub');
+  const btn    = $('game-toggle-btn');
+  if (gameActive) {
+    label.textContent = '🟢 Game is live';
+    sub.textContent   = 'Players can complete squares';
+    btn.textContent   = 'End Game';
+    btn.className     = 'game-toggle-btn end';
+  } else {
+    label.textContent = '🔴 Game over';
+    sub.textContent   = gameEndedAt
+      ? `Ended at ${new Date(gameEndedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      : '';
+    btn.textContent   = 'Restart Game';
+    btn.className     = 'game-toggle-btn start';
+  }
+}
+
+async function toggleGameState() {
+  const newActive = !gameActive;
+  const confirm_  = newActive
+    ? confirm('Restart the game? Players can complete squares again.')
+    : confirm('End the game? Players will be locked out and the leaderboard will be shown.');
+  if (!confirm_) return;
+
+  $('game-toggle-btn').disabled = true;
+  try {
+    await api('POST', '/api/admin/game-state', { active: newActive });
+    await loadGameState();
+    updateAdminGameControl();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    $('game-toggle-btn').disabled = false;
+  }
 }
 
 function switchAdminTab(tab) {
@@ -575,6 +649,9 @@ function init() {
   $('modal-honor-btn').addEventListener('click', submitHonor);
   $('modal-unmark-btn').addEventListener('click', unmarkSquare);
   $('modal-answer-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitAnswer(); });
+
+  // Admin game control
+  $('game-toggle-btn').addEventListener('click', toggleGameState);
 
   // Admin tabs
   document.querySelectorAll('.admin-tab').forEach(btn => {

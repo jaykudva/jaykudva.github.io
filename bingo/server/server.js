@@ -65,6 +65,16 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+const FREE_SQUARE    = null; // sentinel stored at index 12
+const FREE_SQUARE_ID = '00000000-0000-0000-0000-000000000001';
+const FREE_SQUARE_CELL = {
+  id:          FREE_SQUARE_ID,
+  title:       'Arigato',
+  description: 'Send Jay a voice note of you saying "arigatou gozaimasu." Pronunciation counts — at least a little.',
+  type:        'honor',
+  completed:   false,
+};
+
 async function getOrCreateBoard(sb, userId, boardType) {
   const { data: existing } = await sb
     .from('bingo_board_assignments')
@@ -73,7 +83,13 @@ async function getOrCreateBoard(sb, userId, boardType) {
     .eq('board', boardType)
     .single();
 
-  if (existing) return existing.question_ids;
+  // Auto-migrate boards created before the free square was added
+  if (existing) {
+    const hasFreeSquare = existing.question_ids.length === 25 && existing.question_ids[12] === FREE_SQUARE;
+    if (hasFreeSquare) return existing.question_ids;
+    // Old format — delete and regenerate below
+    await sb.from('bingo_board_assignments').delete().eq('user_id', userId).eq('board', boardType);
+  }
 
   const { data: questions, error } = await sb
     .from('bingo_questions')
@@ -81,16 +97,18 @@ async function getOrCreateBoard(sb, userId, boardType) {
     .eq('board', boardType);
 
   if (error || !questions?.length) throw new Error(`No questions found for board: ${boardType}`);
-  if (questions.length < 25) throw new Error(`Need 25 questions for ${boardType} board, only have ${questions.length}`);
+  if (questions.length < 24) throw new Error(`Need at least 24 questions for ${boardType} board, only have ${questions.length}`);
 
-  const questionIds = shuffle(questions.map(q => q.id)).slice(0, 25);
+  const picked = shuffle(questions.map(q => q.id)).slice(0, 24);
+  // Insert free square sentinel at center position
+  picked.splice(12, 0, FREE_SQUARE);
 
   const { error: insertErr } = await sb
     .from('bingo_board_assignments')
-    .insert({ user_id: userId, board: boardType, question_ids: questionIds });
+    .insert({ user_id: userId, board: boardType, question_ids: picked });
 
   if (insertErr) throw new Error(insertErr.message);
-  return questionIds;
+  return picked;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -129,15 +147,20 @@ app.get('/api/board/:type', requireAuth, async (req, res) => {
   try {
     const questionIds = await getOrCreateBoard(sb, req.user.id, type);
 
+    const realIds     = questionIds.filter(id => id !== FREE_SQUARE);
+    const completionIds = [...realIds, FREE_SQUARE_ID];
     const [{ data: questions }, { data: completions }] = await Promise.all([
-      sb.from('bingo_questions').select('id, title, description, type').in('id', questionIds),
-      sb.from('bingo_completions').select('question_id').eq('user_id', req.user.id).in('question_id', questionIds),
+      sb.from('bingo_questions').select('id, title, description, type').in('id', realIds),
+      sb.from('bingo_completions').select('question_id').eq('user_id', req.user.id).in('question_id', completionIds),
     ]);
 
-    const completedSet  = new Set((completions || []).map(c => c.question_id));
-    const questionMap   = Object.fromEntries((questions || []).map(q => [q.id, q]));
+    const completedSet = new Set((completions || []).map(c => c.question_id));
+    const questionMap  = Object.fromEntries((questions || []).map(q => [q.id, q]));
 
     const cells = questionIds.map(qid => {
+      if (qid === FREE_SQUARE) {
+        return { ...FREE_SQUARE_CELL, completed: completedSet.has(FREE_SQUARE_ID), free: true };
+      }
       const q = questionMap[qid];
       return { id: qid, title: q?.title ?? '?', description: q?.description ?? '', type: q?.type ?? 'honor', completed: completedSet.has(qid) };
     });
@@ -164,19 +187,20 @@ app.get('/api/players/:userId/board/:type', requireAuth, async (req, res) => {
 
   const questionIds = assignment.question_ids;
 
+  const realIds       = questionIds.filter(id => id !== FREE_SQUARE);
+  const completionIds = [...realIds, FREE_SQUARE_ID];
   const [{ data: questions }, { data: completions }] = await Promise.all([
-    sb.from('bingo_questions').select('id, title').in('id', questionIds),
-    sb.from('bingo_completions').select('question_id').eq('user_id', userId).in('question_id', questionIds),
+    sb.from('bingo_questions').select('id, title').in('id', realIds),
+    sb.from('bingo_completions').select('question_id').eq('user_id', userId).in('question_id', completionIds),
   ]);
 
   const completedSet = new Set((completions || []).map(c => c.question_id));
   const questionMap  = Object.fromEntries((questions || []).map(q => [q.id, q]));
 
-  const cells = questionIds.map(qid => ({
-    id: qid,
-    title: questionMap[qid]?.title ?? '?',
-    completed: completedSet.has(qid),
-  }));
+  const cells = questionIds.map(qid => {
+    if (qid === FREE_SQUARE) return { ...FREE_SQUARE_CELL, completed: completedSet.has(FREE_SQUARE_ID), free: true };
+    return { id: qid, title: questionMap[qid]?.title ?? '?', completed: completedSet.has(qid) };
+  });
 
   res.json({ board: type, cells });
 });
@@ -188,6 +212,16 @@ app.post('/api/complete', requireAuth, async (req, res) => {
   if (!questionId) return res.status(400).json({ error: 'Missing questionId' });
 
   const sb = getSupabase();
+
+  const { data: settings } = await sb
+    .from('bingo_game_settings')
+    .select('game_active')
+    .eq('id', 'singleton')
+    .single();
+  if (settings && !settings.game_active) {
+    return res.status(403).json({ error: 'The game has ended — no more completions!' });
+  }
+
   const { data: question } = await sb
     .from('bingo_questions')
     .select('id, type, correct_answer')
@@ -220,6 +254,33 @@ app.delete('/api/complete/:questionId', requireAuth, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Game state ────────────────────────────────────────────────────────────────
+
+app.get('/api/game-state', requireAuth, async (req, res) => {
+  const sb = getSupabase();
+  const { data } = await sb
+    .from('bingo_game_settings')
+    .select('game_active, started_at, ended_at')
+    .eq('id', 'singleton')
+    .single();
+  res.json({
+    active:    data?.game_active ?? true,
+    startedAt: data?.started_at  ?? null,
+    endedAt:   data?.ended_at    ?? null,
+  });
+});
+
+app.post('/api/admin/game-state', requireAuth, requireAdmin, async (req, res) => {
+  const { active } = req.body;
+  const sb = getSupabase();
+  const payload = { id: 'singleton', game_active: active };
+  if (active)  { payload.started_at = new Date().toISOString(); payload.ended_at = null; }
+  if (!active) { payload.ended_at   = new Date().toISOString(); }
+  const { error } = await sb.from('bingo_game_settings').upsert(payload);
+  if (error) return res.status(502).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 // ── Players ───────────────────────────────────────────────────────────────────
 
 app.get('/api/players', requireAuth, async (req, res) => {
@@ -237,12 +298,18 @@ app.get('/api/players', requireAuth, async (req, res) => {
     if (board) counts[c.user_id][board]++;
   }
 
-  const players = (users || []).map(u => ({
-    id: u.id,
-    username: u.username,
-    displayName: u.display_name,
-    completions: counts[u.id] || { standard: 0, extra: 0 },
-  }));
+  const players = (users || [])
+    .map(u => ({
+      id: u.id,
+      username: u.username,
+      displayName: u.display_name,
+      completions: counts[u.id] || { standard: 0, extra: 0 },
+    }))
+    .sort((a, b) => {
+      const totalA = a.completions.standard + a.completions.extra;
+      const totalB = b.completions.standard + b.completions.extra;
+      return totalB - totalA;
+    });
 
   res.json({ players });
 });
