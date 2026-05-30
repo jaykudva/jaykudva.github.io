@@ -3,180 +3,463 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Home</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;600&display=swap" rel="stylesheet">
+  <title>Jay Kudva</title>
+  <!--
+    FONT: Relies on Helvetica Neue (macOS system font).
+    To add a Google Font fallback, uncomment below and update --font-display in :root:
+    <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@900&display=swap" rel="stylesheet">
+  -->
   <style>
+    /* ================================================================
+       LOCAL FONTS — Helvetica Neue Cyr
+       ================================================================ */
+    @font-face {
+      font-family: 'HelveticaNeue';
+      src: url('fonts/HelveticaNeueCyr-Black.otf') format('opentype');
+      font-weight: 900;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'HelveticaNeue';
+      src: url('fonts/HelveticaNeueCyr-Heavy.otf') format('opentype');
+      font-weight: 800;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'HelveticaNeue';
+      src: url('fonts/HelveticaNeueCyr-Bold.otf') format('opentype');
+      font-weight: 700;
+      font-style: normal;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'HelveticaNeue';
+      src: url('fonts/HelveticaNeueCyr-Roman.otf') format('opentype');
+      font-weight: 400;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    /* ================================================================
+       COLOR PALETTE — edit all theme tokens here
+       ================================================================ */
     :root {
-      --bg-light: #f5f5f5;
-      --bg-dark: #121212;
-      --text-light: #1a1a1a;
-      --text-dark: #e0e0e0;
-      --container-bg-light: #ffffff;
-      --container-bg-dark: #1e1e1e;
+      /* ↓ Swap the words in the HTML, not here */
+
+      /* Backgrounds */
+      --bg-dark:  #0b0b0d;        /* lamp-off (dark) */
+      --bg-light: #ede8df;        /* lamp-on (light/paper) */
+
+      /* Halftone dots
+         Adjust r in the SVG <circle r="..."> and pattern width/height for density */
+      --dot-dark:  rgba(148, 175, 205, 0.065);   /* subtle dots on dark bg */
+      --dot-light: rgba(22,  34,  55,  0.095);   /* subtle dots on light bg */
+
+      /* Primary accent — desaturated gray-blue */
+      --accent:     #8899aa;
+      --accent-dim: #5a6a7a;   /* darker version for light mode */
+
+      /* Word 1 — outline only */
+      --w1-stroke:       #8899aa;   /* dark mode stroke color */
+      --w1-stroke-light: #445566;   /* light mode stroke color */
+      --w1-stroke-width: 1.8px;
+
+      /* Word 2 — solid fill */
+      --w2-fill:       #c4d4e4;   /* dark mode: tinted near-white */
+      --w2-fill-light: #1e2e3e;   /* light mode: deep navy */
+
+      /* Lamp chrome */
+      --cord:     #545464;
+      --shade:    #38384a;
+      --cap:      #545464;
+      --bulb-off: #28283a;
+      --bulb-on:  #fff9e0;
+      --glow:     rgba(255, 235, 110, 0.7);
+
+      /* Nav */
+      --nav-ink:       rgba(130, 148, 168, 0.70);   /* dark mode */
+      --nav-ink-light: rgba(40, 58, 78, 0.72);       /* light mode — darker for contrast */
+      --nav-hover: #8899aa;
+
+      /* ↓ Font stack — HelveticaNeue loaded from /fonts/ above */
+      --font-display: 'HelveticaNeue', 'Helvetica Neue', Helvetica,
+                      'Arial Black', Arial, sans-serif;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    html, body {
-      min-height: 100%;
-      width: 100%;
-      font-family: 'Inter', sans-serif;
-      transition: background-color 0.3s, color 0.3s;
-      background-color: var(--bg-dark);
-      color: var(--text-dark);
-      padding: 1rem;
-    }
+    html, body { height: 100%; }
 
     body {
+      min-height: 100%;
+      background-color: var(--bg-dark);
       display: flex;
       align-items: center;
-      justify-content: center;
-    }
-
-    body.light {
-      background-color: var(--bg-light);
-      color: var(--text-light);
-    }
-
-    .container {
-      max-width: 640px;
-      width: 100%;
-      padding: 2.5rem 2rem;
-      border-radius: 16px;
-      background: var(--container-bg-dark);
-      transition: background 0.3s;
+      /* Left-justified: content starts from the left with padding */
+      justify-content: flex-start;
+      padding-left: clamp(2rem, 7vw, 9rem);
+      overflow: hidden;
       position: relative;
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      transition: background-color 0.65s ease;
     }
 
-    @media (max-width: 600px) {
-      .container {
-        padding: 2rem 1.5rem;
-        border-radius: 12px;
-      }
+    body.lamp-on { background-color: var(--bg-light); }
+
+    /* ================================================================
+       HALFTONE DOT OVERLAY
+       SVG radialGradient pattern — dots fade softly at edges.
+       Edit r="1.8" for dot size; width/height="18" for spacing density.
+       ================================================================ */
+    .halftone {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
     }
 
-    @media (max-width: 480px) {
-      .container {
-        padding: 1.5rem 1rem;
-      }
+    /* ================================================================
+       LAMP
+       ================================================================ */
+    .lamp-anchor {
+      position: fixed;
+      top: 0;
+      left: 50%;
+      margin-left: -20px;   /* half of SVG width (40px) to center */
+      z-index: 20;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    body.light .container {
-      background: var(--container-bg-light);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    .lamp-swing {
+      transform-origin: top center;
+      display: block;
     }
 
-    .bio {
-      font-size: 1rem;
-      font-weight: 300;
-      line-height: 1.8;
-      text-align: left;
+    .lamp-swing.swinging {
+      animation: pendulum 0.9s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
     }
 
-    @media (max-width: 480px) {
-      .bio {
-        font-size: 0.95rem;
-      }
+    @keyframes pendulum {
+      0%   { transform: rotate(0deg); }
+      16%  { transform: rotate(13deg); }
+      40%  { transform: rotate(-8.5deg); }
+      60%  { transform: rotate(4deg); }
+      76%  { transform: rotate(-1.8deg); }
+      88%  { transform: rotate(0.7deg); }
+      100% { transform: rotate(0deg); }
     }
 
-    nav {
-      margin-top: 2rem;
+    /* Bulb glow — CSS drop-shadow on the whole SVG when lamp is on */
+    .lamp-anchor.on .lamp-svg {
+      filter:
+        drop-shadow(0 0 5px var(--glow))
+        drop-shadow(0 0 16px rgba(255, 228, 80, 0.35))
+        drop-shadow(0 0 40px rgba(255, 210, 60, 0.18));
+      transition: filter 0.5s ease;
+    }
+
+    .lamp-svg {
+      filter: none;
+      transition: filter 0.5s ease;
+      overflow: visible;
+    }
+
+    /* ================================================================
+       DISPLAY TEXT
+       ================================================================ */
+    main {
+      position: relative;
+      z-index: 1;
       display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      justify-content: center;
+      flex-direction: row;    /* words on one line */
+      align-items: baseline;
+      /* ↓ Gap between "jay" and "kudva" — roughly one word-space */
+      gap: 0.22em;
+      user-select: none;
+    }
+
+    .word {
+      /* ↓ Font: change --font-display in :root to swap typeface */
+      font-family: var(--font-display);
+      font-weight: 900;
+      /* ↓ Size range: min | viewport-relative | max — tweak all three */
+      font-size: clamp(3.8rem, 13vw, 10rem);
+      line-height: 0.87;
+      /* ↓ Letter-spacing: more negative = tighter */
+      letter-spacing: -0.055em;
+      /* lowercase — add text-transform: uppercase here to go all-caps */
+      text-transform: none;
+      /* ↓ Ink bleed filter — intensity controlled by scale in #inkbleed SVG filter */
+      filter: url(#inkbleed);
+      /* Smooth color transitions on theme toggle */
+      transition:
+        color 0.55s ease,
+        -webkit-text-stroke-color 0.55s ease;
+    }
+
+    /* Word 1 — outline / stroke only, no fill */
+    .word-1 {
+      color: transparent;
+      -webkit-text-stroke: var(--w1-stroke-width) var(--w1-stroke);
+      paint-order: stroke fill;
+    }
+
+    /* Word 2 — solid fill, tinted toward accent */
+    .word-2 {
+      color: var(--w2-fill);
+      -webkit-text-stroke: 0;
+    }
+
+    /* Light-mode overrides */
+    body.lamp-on .word-1 { -webkit-text-stroke-color: var(--w1-stroke-light); }
+    body.lamp-on .word-2 { color: var(--w2-fill-light); }
+
+    /* ================================================================
+       NAV LINKS
+       ================================================================ */
+    nav {
+      position: fixed;
+      bottom: 2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 2.5rem;
+      white-space: nowrap;
     }
 
     nav a {
-      font-size: 0.9rem;
-      color: inherit;
+      font-family: var(--font-display);
+      font-size: 0.68rem;
+      font-weight: 400;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--nav-ink);
       text-decoration: none;
-      font-weight: 300;
-      padding: 0.5rem 0;
+      padding: 0.38rem 0.85rem;
+      border-radius: 2px;
+      background: rgba(10, 12, 20, 0.55);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      transition: color 0.3s, background 0.4s;
     }
 
-    @media (max-width: 480px) {
-      nav {
-        flex-direction: column;
-        gap: 0.75rem;
-      }
+    nav a:hover { color: var(--nav-hover); }
 
-      nav a {
-        display: block;
-        text-align: center;
-      }
+    body.lamp-on nav a {
+      color: var(--nav-ink-light);
+      background: rgba(237, 232, 223, 0.82);
     }
+    body.lamp-on nav a:hover { color: var(--accent-dim); }
 
-    .theme-toggle {
+    /* Utility: hidden SVG defs container */
+    .svg-defs {
       position: absolute;
-      top: 1rem;
-      right: 1rem;
-      background: transparent;
-      border: none;
-      font-size: 1.2rem;
-      cursor: pointer;
-      z-index: 2;
-      padding: 0.5rem;
-      border-radius: 8px;
-      transition: background-color 0.2s;
-    }
-
-    .theme-toggle:active {
-      background-color: rgba(255, 255, 255, 0.1);
-    }
-
-    body.light .theme-toggle:active {
-      background-color: rgba(0, 0, 0, 0.1);
+      width: 0; height: 0;
+      overflow: hidden;
+      pointer-events: none;
     }
 
     @media (max-width: 480px) {
-      .theme-toggle {
-        top: 0.75rem;
-        right: 0.75rem;
-        font-size: 1.4rem;
-      }
+      nav { gap: 1.5rem; }
+      nav a { font-size: 0.6rem; letter-spacing: 0.12em; }
     }
-
-    .blue { color: #6CB2D1; }
-    .green { color: #2d6a4f; }
-    .bonfire { color: #ff5f42; }
-    .yellow { color: rgb(172, 126, 10); }
-    .amazon { color: #FF9900; }
-    .blueprint { color: #187BE5; }
   </style>
 </head>
-<body class="dark">
-  <div class="container">
-    <button class="theme-toggle" onclick="toggleTheme()" id="themeIcon">🌙</button>
-    <div class="bio">
-      <p>hey! my name is <span class="blue">Jay Kudva</span> and I’m a software engineer 2 working on Rufus at <span class="amazon">Amazon</span>!<br><br>
-      my current role revolves around curated experiences, first and third party integrations, and safety/trust/policy implementation in Rufus — previously, I’ve worked on determinism on 1P queries, updating Rufus’s contextual understanding, and creating auditing mechanisms for our guardrails at scale.<br><br>
-      i studied computer science and economics at <span class="yellow">uc berkeley</span>, with a special interest in entrepreneurship and supply chain automation. at berkeley, i was an external director for <span class="blueprint">Blueprint - Technology for Nonprofits</span>, where I got to leverage my technical knowledge for community support.<br><br>
-      i’m passionate about <span class="bonfire">educational equity</span> (and technology) and <span class="bonfire">financial literacy</span>! i also, very sporadically, make youtube videos and take photos!<br><br>
-      when i’m not working, i’m usually traveling to <span class="blue">nyc</span>, doing a <span class="blue">cocktail chemistry experiment</span>, or trying every new restaurant i can find in <span class="green">seattle</span>…<br><br>
-      <strong>tl;dr</strong> — i work on Rufus, did cs & econ at Berkeley, worked with nonprofits through <span class="blueprint">Blueprint</span>, and i (used to) trade stonks a lot.
-      </p>
+<body>
+
+  <!-- ================================================================
+       SVG FILTERS — ink bleed / letterpress effect
+       Approach: Gaussian spread → color with grayish-blue ink → merge
+       under original. No displacement = smooth edges, no jaggedness.
+       ↓ KNOBS:
+         stdDeviation="2.5"      — INK BLEED RADIUS (higher = more spread)
+         flood-color="#6b8299"   — ink bleed color (grayish-blue)
+         flood-opacity="0.78"    — bleed intensity (0–1)
+       ================================================================ -->
+  <svg class="svg-defs" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <filter id="inkbleed" x="-14%" y="-14%" width="128%" height="128%">
+        <!-- Blur spreads the letterform like ink soaking into paper -->
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="spread"/>
+        <!-- Flood with grayish-blue ink color -->
+        <feFlood flood-color="#6b8299" flood-opacity="0.78" result="inkColor"/>
+        <!-- Clip flood to the blurred shape only -->
+        <feComposite in="inkColor" in2="spread" operator="in" result="coloredBleed"/>
+        <!-- Layer: soft bleed behind, crisp original on top -->
+        <feMerge>
+          <feMergeNode in="coloredBleed"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- ================================================================
+       HALFTONE DOT OVERLAY
+       45° rotated grid = authentic print halftone, not a plain dot grid.
+       ↓ KNOBS:
+         pattern width/height="7"        — cell size (smaller = tighter/denser)
+         patternTransform="rotate(N)"    — angle (45 = classic halftone)
+         circle r="1.7"                  — dot radius
+         stop-color opacity              — dot darkness/lightness
+       ================================================================ -->
+  <svg class="halftone" id="halftone-svg"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <!-- Dark-mode dots: soft blue-gray, clearly visible -->
+      <radialGradient id="dot-grad-dark" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="rgba(140, 170, 205, 0.60)"/>
+        <stop offset="60%"  stop-color="rgba(140, 170, 205, 0.28)"/>
+        <stop offset="100%" stop-color="rgba(140, 170, 205, 0)"/>
+      </radialGradient>
+      <!-- Light-mode dots: dark navy, clearly visible on paper bg -->
+      <radialGradient id="dot-grad-light" cx="50%" cy="50%" r="50%">
+        <stop offset="0%"   stop-color="rgba(30, 48, 72, 0.52)"/>
+        <stop offset="60%"  stop-color="rgba(30, 48, 72, 0.22)"/>
+        <stop offset="100%" stop-color="rgba(30, 48, 72, 0)"/>
+      </radialGradient>
+      <!-- ↓ 7px cell, 45° rotation = diagonal halftone screen -->
+      <pattern id="dots-dark" x="0" y="0" width="7" height="7"
+               patternUnits="userSpaceOnUse"
+               patternTransform="rotate(45)">
+        <circle cx="3.5" cy="3.5" r="2.2" fill="url(#dot-grad-dark)"/>
+      </pattern>
+      <pattern id="dots-light" x="0" y="0" width="7" height="7"
+               patternUnits="userSpaceOnUse"
+               patternTransform="rotate(45)">
+        <circle cx="3.5" cy="3.5" r="2.2" fill="url(#dot-grad-light)"/>
+      </pattern>
+    </defs>
+    <!-- Two stacked rects; JS crossfades opacity between them -->
+    <rect id="dot-dark-rect"  width="100%" height="100%" fill="url(#dots-dark)"
+          style="opacity:1; transition: opacity 0.65s ease;"/>
+    <rect id="dot-light-rect" width="100%" height="100%" fill="url(#dots-light)"
+          style="opacity:0; transition: opacity 0.65s ease;"/>
+  </svg>
+
+  <!-- ================================================================
+       LAMP — pendant lamp, SVG, anchored at top-center
+       The lamp-anchor div centers it; lamp-swing handles rotation.
+       ================================================================ -->
+  <div class="lamp-anchor" id="lamp-anchor" aria-label="Toggle light/dark mode"
+       role="button" tabindex="0">
+    <div class="lamp-swing" id="lamp-swing">
+      <svg class="lamp-svg" id="lamp-svg"
+           width="40" height="118" viewBox="0 0 40 118"
+           xmlns="http://www.w3.org/2000/svg">
+
+        <!-- Cord — runs from viewport top to shade top -->
+        <line x1="20" y1="0" x2="20" y2="44"
+              stroke="#545464" stroke-width="1.4" stroke-linecap="round"/>
+
+        <!-- Lamp shade (trapezoid) -->
+        <polygon points="4,44 36,44 30,68 10,68" fill="#38384a"/>
+
+        <!-- Shade top rim (gives depth) -->
+        <ellipse cx="20" cy="44" rx="16" ry="3.5" fill="#4c4c60"/>
+
+        <!-- Shade bottom rim -->
+        <ellipse cx="20" cy="68" rx="10" ry="2" fill="#30303e"/>
+
+        <!-- Socket cap -->
+        <rect id="bulb-cap" x="16" y="67" width="8" height="7"
+              rx="1.8" fill="#545464"/>
+
+        <!-- Bulb glass — fill toggled by JS; glow via filter on parent -->
+        <ellipse id="bulb-glass" cx="20" cy="86" rx="9.5" ry="12"
+                 fill="#28283a"/>
+
+        <!-- Bulb base taper -->
+        <rect x="17" y="95" width="6" height="4" rx="1" fill="#38384a"/>
+
+        <!-- Filament — visible when lamp is on -->
+        <path id="filament"
+              d="M14.5,83 Q17,78.5 20,81 Q23,78.5 25.5,83"
+              stroke="#fff8dc" stroke-width="1.1"
+              fill="none" opacity="0" stroke-linecap="round"
+              style="transition: opacity 0.4s ease;"/>
+
+        <!-- Inner bulb glow patch — soft inner light when on -->
+        <ellipse id="bulb-inner" cx="20" cy="83" rx="5" ry="6"
+                 fill="#fffae8" opacity="0"
+                 style="transition: opacity 0.45s ease;"/>
+      </svg>
     </div>
-    <nav>
-      <a href="#about">Contact</a>
-      <a href="#blog">YouTube</a>
-      <a href="#contact">Photography</a>
-      <a href="crawl.html">Crawl</a>
-    </nav>
   </div>
+
+  <!-- ================================================================
+       MAIN DISPLAY TEXT
+       ↓ SWAP YOUR TWO WORDS HERE — keep class names as-is
+       ================================================================ -->
+  <main>
+    <span class="word word-1">jay</span>
+    <span class="word word-2">kudva</span>
+  </main>
+
+  <!-- ================================================================
+       NAV — update hrefs as needed
+       ================================================================ -->
+  <nav>
+    <a href="mailto:jaykudva1@gmail.com">Contact</a>
+    <a href="https://youtube.com/@jaykud" target="_blank" rel="noopener">YouTube</a>
+    <a href="https://unsplash.com/@jaykudva" target="_blank" rel="noopener">Photos</a>
+    <a href="crawl.html">Crawl</a>
+    <a href="trip/index.html">Trip Planning</a>
+  </nav>
+
   <script>
-    function toggleTheme() {
-      const body = document.body;
-      const icon = document.getElementById('themeIcon');
-      body.classList.toggle('dark');
-      body.classList.toggle('light');
-      icon.textContent = body.classList.contains('dark') ? '🌙' : '☀️';
+    const body       = document.body;
+    const lampAnchor = document.getElementById('lamp-anchor');
+    const lampSwing  = document.getElementById('lamp-swing');
+    const bulbGlass  = document.getElementById('bulb-glass');
+    const filament   = document.getElementById('filament');
+    const bulbInner  = document.getElementById('bulb-inner');
+    const dotDark    = document.getElementById('dot-dark-rect');
+    const dotLight   = document.getElementById('dot-light-rect');
+
+    let isOn = false;
+
+    function setLampState(on) {
+      isOn = on;
+      body.classList.toggle('lamp-on', on);
+      lampAnchor.classList.toggle('on', on);
+
+      // Bulb appearance
+      bulbGlass.setAttribute('fill', on ? '#fff9e0' : '#28283a');
+      filament.style.opacity  = on ? '1' : '0';
+      bulbInner.style.opacity = on ? '0.6' : '0';
+
+      // Halftone dot crossfade
+      dotDark.style.opacity  = on ? '0' : '1';
+      dotLight.style.opacity = on ? '1' : '0';
     }
+
+    function swing() {
+      lampSwing.classList.remove('swinging');
+      void lampSwing.offsetWidth;            // force reflow to restart animation
+      lampSwing.classList.add('swinging');
+      lampSwing.addEventListener('animationend', () => {
+        lampSwing.classList.remove('swinging');
+      }, { once: true });
+    }
+
+    function toggleLamp() {
+      swing();
+      setLampState(!isOn);
+    }
+
+    lampAnchor.addEventListener('click', toggleLamp);
+    lampAnchor.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLamp(); }
+    });
+
+    // Boot in dark/off state
+    setLampState(false);
   </script>
 </body>
 </html>
