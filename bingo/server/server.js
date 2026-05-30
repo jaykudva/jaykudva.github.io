@@ -415,6 +415,16 @@ app.post('/api/admin/users', requireAuth, requireAdmin, async (req, res) => {
   res.json({ user: data });
 });
 
+app.delete('/api/admin/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: 'Cannot delete yourself' });
+  }
+  const sb = getSupabase();
+  const { error } = await sb.from('bingo_users').delete().eq('id', req.params.id);
+  if (error) return res.status(502).json({ error: error.message });
+  res.json({ ok: true });
+});
+
 app.post('/api/admin/reset-board', requireAuth, requireAdmin, async (req, res) => {
   const { userId, board } = req.body;
   if (!userId || !board) return res.status(400).json({ error: 'userId and board required' });

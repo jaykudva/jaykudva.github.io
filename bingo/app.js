@@ -511,10 +511,21 @@ async function loadAdminUsers() {
             <div class="u-sub">@${esc(u.username)}</div>
           </div>
           <button class="reset-btn" data-id="${u.id}" data-board="standard">↺ Std</button>
-          <button class="reset-btn" data-id="${u.id}" data-board="extra"    style="margin-left:4px">↺ Xtr</button>
+          <button class="reset-btn" data-id="${u.id}" data-board="extra" style="margin-left:4px">↺ Xtr</button>
+          <button class="act-btn btn-del-user" data-id="${u.id}" style="margin-left:4px">🗑️</button>
         </div>
       `).join('')}
     `;
+
+    pane.querySelectorAll('.btn-del-user').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!confirm('Delete this user? This cannot be undone.')) return;
+        try {
+          await api('DELETE', '/api/admin/users/' + btn.dataset.id);
+          loadAdminUsers();
+        } catch (err) { alert(err.message); }
+      });
+    });
 
     pane.querySelectorAll('.reset-btn').forEach(btn => {
       btn.addEventListener('click', async () => {
