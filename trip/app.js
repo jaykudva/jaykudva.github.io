@@ -1516,88 +1516,47 @@ function parseGoogleMapsUrl(str) {
 }
 
 // Resolve coordinates from any Google Maps URL, including short links.
-// maps.app.goo.gl uses HTTP + JS redirects; allorigins returns the HTML body
-// which contains the real destination in a meta-refresh or JS redirect tag.
+// Short links (maps.app.goo.gl) are expanded server-side to avoid CORS issues.
 async function resolveGoogleMapsCoords(url) {
   if (!url) return null;
 
-  // Non-short URL: parse directly
+  // Non-short URL: parse coordinates directly from the URL string
   if (!/goo\.gl|maps\.app\.goo\.gl/i.test(url)) {
     return parseGoogleMapsUrl(url);
   }
 
+  // Short URL — ask the server to expand it
   try {
-    const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-    const res   = await fetch(proxy);
-    const data  = await res.json();
-    const body  = data?.contents || '';
-
-    // 1. Direct scan of body for coordinate patterns (works if allorigins
-    //    follows HTTP redirects and returns the final Maps page)
-    const fromBody = parseGoogleMapsUrl(body);
-    if (fromBody) return fromBody;
-
-    // 2. Extract the redirect target from a meta-refresh tag:
-    //    <meta http-equiv="refresh" content="0; url=https://...">
-    const metaUrl = body.match(/content=["']\d+;\s*url=([^"']+)["']/i)?.[1];
-    if (metaUrl) {
-      const fromMeta = parseGoogleMapsUrl(decodeURIComponent(metaUrl));
-      if (fromMeta) return fromMeta;
-    }
-
-    // 3. Extract from a JS redirect: window.location = "..." or location.href = "..."
-    const jsUrl = body.match(/(?:window\.)?location(?:\.href)?\s*=\s*["']([^"']+)["']/)?.[1];
-    if (jsUrl) {
-      const fromJs = parseGoogleMapsUrl(decodeURIComponent(jsUrl));
-      if (fromJs) return fromJs;
-    }
-
-    // 4. Any full Google Maps URL embedded anywhere in the HTML
-    const embedded = body.match(/https:\/\/(?:www\.)?google\.com\/maps\/[^\s"'\\<>]+/)?.[0];
-    if (embedded) {
-      const fromEmbedded = parseGoogleMapsUrl(decodeURIComponent(embedded));
-      if (fromEmbedded) return fromEmbedded;
-    }
-
-    return null;
-  } catch {
+    console.log(`[resolveCoords] expanding short URL via server: ${url}`);
+    const res  = await fetch(`${API_BASE}/api/resolve-url?url=${encodeURIComponent(url)}`);
+    const data = await res.json();
+    if (!res.ok) { console.warn('[resolveCoords] server error:', data); return null; }
+    console.log(`[resolveCoords] resolved:`, data);
+    return { lat: data.lat, lng: data.lng };
+  } catch (err) {
+    console.error('[resolveCoords] fetch failed:', err);
     return null;
   }
 }
 
-// Geocode a free-text address via Nominatim (OSM, no API key required).
+// Geocode a free-text address via the server (Google Geocoding API).
 async function geocodeAddress(text) {
-  // Detect likely country for a narrowing hint (improves hit rate, not required).
-  const countryCode =
-    /japan|tokyo|osaka|kyoto|nagoya|fukuoka|\bjp\b/i.test(text)           ? 'jp' :
-    /\bcdmx\b|ciudad de m[eé]xico|mexico city|\bmx\b/i.test(text)        ? 'mx' :
-    /\busa\b|\bunited states\b|new york|los angeles|chicago/i.test(text)  ? 'us' :
-    null;
-
-  // CDMX abbreviation normalisation
-  const normalize = s => s
-    .replace(/\bNte\b\.?/gi, 'Norte').replace(/\bSur\b/gi, 'Sur')
-    .replace(/\bOte\b\.?/gi, 'Oriente').replace(/\bPte\b\.?/gi, 'Poniente')
-    .replace(/\bCDMX\b/gi, 'Ciudad de México').replace(/\bCol\b\.?/gi, 'Colonia')
-    .trim();
-
-  const q = normalize(text);
-
-  async function nominatim(query, cc) {
-    const cc_param = cc ? `&countrycodes=${cc}` : '';
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1${cc_param}`;
-    const res  = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+  console.log(`[geocode] "${text}"`);
+  try {
+    const res  = await fetch(`${API_BASE}/api/geocode?address=${encodeURIComponent(text)}`);
+    console.log(`[geocode] status: ${res.status}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.warn(`[geocode] server error:`, err);
+      return null;
+    }
     const data = await res.json();
-    if (data.length) return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon), address: data[0].display_name };
+    console.log(`[geocode] result:`, data);
+    return { lat: data.lat, lng: data.lng, address: data.formattedAddress };
+  } catch (err) {
+    console.error(`[geocode] fetch failed:`, err);
     return null;
   }
-
-  // Try with country hint first (faster, more accurate), then without
-  if (countryCode) {
-    const r = await nominatim(q, countryCode);
-    if (r) return r;
-  }
-  return await nominatim(q, null);
 }
 
 btnLocate.addEventListener('click', () => resolvePlace(evtPlace.value.trim()));
@@ -1625,19 +1584,23 @@ async function resolvePlace(val) {
     } else {
       // Plain address — geocode via Nominatim
       locStatus.textContent = 'Geocoding…';
+      console.log(`[resolvePlace] geocoding address: "${val}"`);
       const result = await geocodeAddress(val);
       if (result) {
+        console.log(`[resolvePlace] geocode success:`, result);
         currentLocationData = { ...result, address: val };
         locStatus.className   = 'location-status ok';
         locStatus.textContent = `Found: ${result.lat.toFixed(5)}, ${result.lng.toFixed(5)}`;
       } else {
+        console.warn(`[resolvePlace] geocode returned null for "${val}"`);
         locStatus.className   = 'location-status err';
         locStatus.textContent = 'Location not found. Try a more specific address.';
       }
       currentPlaceInfo = null;
       placeInfoEl.classList.add('hidden');
     }
-  } catch {
+  } catch (err) {
+    console.error(`[resolvePlace] unexpected error:`, err);
     currentLocationData = null;
     locStatus.className   = 'location-status err';
     locStatus.textContent = 'Lookup failed. Check your connection.';
@@ -2049,25 +2012,31 @@ btnHomeLocate.addEventListener('click', async () => {
   }
   try {
     if (/goo\.gl|maps\.app\.goo\.gl/i.test(val)) homeLocStatus.textContent = 'Expanding short URL…';
+    console.log(`[homeLocate] input: "${val}"`);
     const fromUrl = await resolveGoogleMapsCoords(val);
     if (fromUrl) {
+      console.log(`[homeLocate] resolved via Google Maps URL:`, fromUrl);
       pendingHomeLocation       = { ...fromUrl, address: val };
       homeLocStatus.className   = 'location-status ok';
       homeLocStatus.textContent = `Found: ${fromUrl.lat.toFixed(5)}, ${fromUrl.lng.toFixed(5)}`;
       return;
     }
     homeLocStatus.textContent = 'Geocoding address…';
+    console.log(`[homeLocate] not a Maps URL, geocoding...`);
     const result = await geocodeAddress(val);
     if (result) {
+      console.log(`[homeLocate] geocode success:`, result);
       pendingHomeLocation       = { ...result, address: homeAddressEl.value.trim() };
       homeLocStatus.className   = 'location-status ok';
       homeLocStatus.textContent = `Found: ${result.lat.toFixed(5)}, ${result.lng.toFixed(5)}`;
     } else {
+      console.warn(`[homeLocate] geocode returned null for "${val}"`);
       pendingHomeLocation       = null;
       homeLocStatus.className   = 'location-status err';
       homeLocStatus.textContent = 'Location not found. Try a more specific address.';
     }
-  } catch {
+  } catch (err) {
+    console.error(`[homeLocate] unexpected error:`, err);
     homeLocStatus.className   = 'location-status err';
     homeLocStatus.textContent = 'Geocoding failed. Check your connection.';
   } finally {

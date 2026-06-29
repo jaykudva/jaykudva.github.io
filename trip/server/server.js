@@ -217,6 +217,54 @@ function getTypeLabel(types = []) {
   return null;
 }
 
+// GET /api/resolve-url?url=<google-maps-url>
+// Expands a short Maps URL (maps.app.goo.gl) to a full one and extracts lat/lng.
+app.get('/api/resolve-url', async (req, res) => {
+  const { url } = req.query;
+  if (!url) return res.status(400).json({ error: 'Missing url' });
+  try {
+    const full = await resolveGoogleMapsUrl(url);
+    if (!full) return res.status(404).json({ error: 'Could not resolve URL' });
+    // Extract !3d<lat>!4d<lng> or @<lat>,<lng>
+    const d3All = [...full.matchAll(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/g)];
+    const d3    = d3All.length ? d3All[d3All.length - 1] : null;
+    const at    = full.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    const match = d3 || at;
+    if (!match) return res.status(404).json({ error: 'No coordinates in resolved URL', resolvedUrl: full });
+    res.json({ lat: parseFloat(match[1]), lng: parseFloat(match[2]), resolvedUrl: full });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+// GET /api/geocode?address=<free text>
+// Returns { lat, lng, formattedAddress } using Google Geocoding API.
+app.get('/api/geocode', async (req, res) => {
+  const { address } = req.query;
+  if (!address) return res.status(400).json({ error: 'Missing address' });
+
+  const key = process.env.GOOGLE_PLACES_API_KEY;
+  if (!key) return res.status(500).json({ error: 'GOOGLE_PLACES_API_KEY not set' });
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${key}`;
+    const data = await (await fetch(url)).json();
+    console.log(`[geocode] "${address}" → status: ${data.status}, results: ${data.results?.length ?? 0}`);
+    if (data.status !== 'OK' || !data.results?.length) {
+      return res.status(404).json({ error: `No results (${data.status})` });
+    }
+    const r = data.results[0];
+    res.json({
+      lat:              r.geometry.location.lat,
+      lng:              r.geometry.location.lng,
+      formattedAddress: r.formatted_address,
+    });
+  } catch (err) {
+    console.error('[geocode] error:', err.message);
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // GET /api/place?url=<google-maps-url>
 // Resolves a Google Maps URL → place details (hours, rating, price level).
 // Uses Places API (Legacy): findplacefromtext + place details.
