@@ -2011,18 +2011,23 @@ btnHomeLocate.addEventListener('click', async () => {
     return;
   }
   try {
-    if (/goo\.gl|maps\.app\.goo\.gl/i.test(val)) homeLocStatus.textContent = 'Expanding short URL…';
     console.log(`[homeLocate] input: "${val}"`);
-    const fromUrl = await resolveGoogleMapsCoords(val);
-    if (fromUrl) {
-      console.log(`[homeLocate] resolved via Google Maps URL:`, fromUrl);
-      pendingHomeLocation       = { ...fromUrl, address: val };
-      homeLocStatus.className   = 'location-status ok';
-      homeLocStatus.textContent = `Found: ${fromUrl.lat.toFixed(5)}, ${fromUrl.lng.toFixed(5)}`;
+    if (isGoogleMapsUrl(val)) {
+      homeLocStatus.textContent = 'Looking up place…';
+      const res  = await fetch(`${API_BASE}/api/place?url=${encodeURIComponent(val)}`);
+      const data = await res.json();
+      if (res.ok && data.lat != null) {
+        pendingHomeLocation       = { lat: data.lat, lng: data.lng, address: data.address || val };
+        homeLocStatus.className   = 'location-status ok';
+        homeLocStatus.textContent = data.name || `Found: ${data.lat.toFixed(5)}, ${data.lng.toFixed(5)}`;
+      } else {
+        homeLocStatus.className   = 'location-status err';
+        homeLocStatus.textContent = data.error || 'Place not found. Try the full Google Maps URL.';
+      }
       return;
     }
     homeLocStatus.textContent = 'Geocoding address…';
-    console.log(`[homeLocate] not a Maps URL, geocoding...`);
+    console.log(`[homeLocate] geocoding address: "${val}"`);
     const result = await geocodeAddress(val);
     if (result) {
       console.log(`[homeLocate] geocode success:`, result);
