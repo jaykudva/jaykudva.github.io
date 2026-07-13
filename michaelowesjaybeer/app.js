@@ -14,6 +14,11 @@ const fmtDate = (iso) => {
   });
 };
 
+const fmtDateShort = (iso) => {
+  const [, m, d] = iso.split('-').map(Number);
+  return `${m}/${d}`;
+};
+
 function esc(s) {
   const div = document.createElement('div');
   div.textContent = s;
@@ -83,10 +88,10 @@ function interestRow(interest, accrual) {
   const next = new Date(accrual.next_accrual).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   return `
     <tr class="is-interest">
-      <td>${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</td>
+      <td>${(() => { const now = new Date(); return `${now.getMonth() + 1}/${now.getDate()}`; })()}</td>
       <td>The Bureau itself</td>
       <td class="memo">Punitive accrual per clause † — ${accrual.aged} obligations aged beyond 21 days. Next beer accrues ${next}.</td>
-      <td class="col-status"><span class="status-owed">+${interest} accrued</span></td>
+      <td class="col-status"><span class="status-owed">+${interest}</span></td>
     </tr>
   `;
 }
@@ -117,11 +122,11 @@ function renderLedger(entries, interest, accrual) {
     const credit = e.kind === 'credit';
     return `
       <tr class="${credit ? 'is-credit' : ''}">
-        <td>${fmtDate(e.occurred_on)}</td>
+        <td>${fmtDateShort(e.occurred_on)}</td>
         <td>${e.location ? esc(e.location) : '<span class="memo">—</span>'}</td>
         <td class="memo">${e.memorandum ? esc(e.memorandum) : (credit ? 'Settlement rendered.' : '—')}</td>
         <td class="col-status">
-          <span class="${credit ? 'status-settled' : 'status-owed'}">${credit ? `−${e.quantity} settled` : `+${e.quantity} owed`}</span>
+          <span class="${credit ? 'status-settled' : 'status-owed'}">${credit ? `−${e.quantity}` : `+${e.quantity}`}</span>
         </td>
       </tr>
     `;

@@ -38,8 +38,8 @@ function requireClerk(req, res, next) {
 }
 
 // ── Punitive interest ──────────────────────────────────────────────────────────
-// Settlements apply LIFO: credits cancel the newest beers first, so old debts
-// linger. Once 3+ pending beers are aged past 21 days, 1 beer accrues
+// Settlements apply FIFO (First In, First Owed): credits retire the oldest
+// beers first. Once 3+ pending beers are aged past 21 days, 1 beer accrues
 // immediately, plus 1 per full week the delinquency persists. Principal only.
 
 const WEEK_MS  = 7 * 86400000;
@@ -52,12 +52,12 @@ function computeInterest(entries) {
     const t = new Date(e.occurred_on).getTime();
     for (let i = 0; i < e.quantity; i++) beers.push(t);
   }
-  beers.sort((a, b) => b - a); // newest first
+  beers.sort((a, b) => a - b); // oldest first
   const settled = entries
     .filter(e => e.kind === 'credit')
     .reduce((n, e) => n + e.quantity, 0);
 
-  const pending = beers.slice(settled); // LIFO: newest `settled` beers cancelled
+  const pending = beers.slice(settled); // FIFO: oldest `settled` beers retired
   const now  = Date.now();
   const aged = pending.filter(t => now - t >= AGING_MS).length;
   if (aged < 3) {
@@ -65,8 +65,7 @@ function computeInterest(entries) {
   }
 
   // Delinquency began when the 3rd-oldest pending beer turned 21 days old
-  const oldestFirst = [...pending].sort((a, b) => a - b);
-  const since    = oldestFirst[2] + AGING_MS;
+  const since    = pending[2] + AGING_MS;
   const interest = 1 + Math.floor((now - since) / WEEK_MS);
   return { interest, active: true, aged, since, next_accrual: since + interest * WEEK_MS };
 }

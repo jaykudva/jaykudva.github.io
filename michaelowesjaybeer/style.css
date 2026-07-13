@@ -277,7 +277,7 @@ body {
 
 .ledger-table {
   width: 100%;
-  table-layout: fixed;
+  table-layout: auto;
   border-collapse: collapse;
   font-family: var(--mono);
   font-size: clamp(11px, 1.8vw, 13px);
@@ -291,6 +291,7 @@ body {
   color: var(--ink-faded);
   padding: 10px 10px 6px 0;
   border-bottom: 1px solid var(--rule);
+  white-space: nowrap;
 }
 .ledger-table td {
   padding: 10px 10px 10px 0;
@@ -300,15 +301,11 @@ body {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+/* Date and status columns hug their (short, inherently unbroken) content;
+   Establishment/Memorandum absorb whatever width is left over and wrap. */
 .ledger-table th:nth-child(1),
-.ledger-table td:nth-child(1) { width: 15%; }
-.ledger-table th:nth-child(2),
-.ledger-table td:nth-child(2) { width: 25%; }
-.ledger-table th:nth-child(3),
-.ledger-table td:nth-child(3) { width: auto; }
-.ledger-table th:nth-child(4),
-.ledger-table td:nth-child(4) { width: 110px; }
-.ledger-table .col-status { text-align: right; padding-right: 0; }
+.ledger-table td:nth-child(1) { width: 1%; white-space: nowrap; }
+.ledger-table .col-status { text-align: right; padding-right: 0; width: 1%; }
 .ledger-table td.col-status { white-space: nowrap; overflow-wrap: normal; }
 
 .status-owed,
