@@ -228,8 +228,19 @@
       transform: translateX(-50%);
       z-index: 10;
       display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
       gap: 2.5rem;
-      white-space: nowrap;
+      max-width: calc(100vw - 1.5rem);
+    }
+
+    nav a { white-space: nowrap; }
+
+    /* Icon-only links (e.g. the beer ledger) */
+    nav a.icon {
+      font-size: 0.95rem;
+      padding: 0.28rem 0.7rem;
+      line-height: 1.1;
     }
 
     nav a {
@@ -265,8 +276,12 @@
     }
 
     @media (max-width: 480px) {
-      nav { gap: 1.5rem; }
+      nav {
+        bottom: 1.25rem;
+        gap: 0.6rem 0.9rem;
+      }
       nav a { font-size: 0.6rem; letter-spacing: 0.12em; }
+      nav a.icon { font-size: 0.85rem; }
     }
   </style>
 </head>
@@ -410,6 +425,7 @@
     <a href="https://unsplash.com/@jaykudva" target="_blank" rel="noopener">Photos</a>
     <a href="crawl.html">Crawl</a>
     <a href="trip/index.html">Trip Planning</a>
+    <a href="michaelowesjaybeer/" class="icon" aria-label="Michael owes Jay beer" title="Michael owes Jay beer">🍺</a>
   </nav>
 
   <script>

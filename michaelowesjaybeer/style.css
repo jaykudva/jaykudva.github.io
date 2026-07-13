@@ -1,0 +1,573 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   The Bureau of Interpersonal Beverage Debt — official stylesheet
+   A trivial matter, treated with the gravity it deserves.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --desk:        #26211a;
+  --paper:       #f4edda;
+  --paper-edge:  #e7dcbe;
+  --ink:         #241c12;
+  --ink-faded:   #6b5d47;
+  --oxblood:     #8c2b23;
+  --gold:        #96762f;
+  --settled:     #3d6b4f;
+  --rule:        #c9b98f;
+
+  --serif: 'Fraunces', 'Georgia', serif;
+  --mono:  'IBM Plex Mono', 'Courier New', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  min-height: 100vh;
+  padding: clamp(12px, 4vw, 56px);
+  background:
+    radial-gradient(ellipse at 50% -20%, rgba(255, 240, 200, 0.06), transparent 60%),
+    var(--desk);
+  font-family: var(--serif);
+  color: var(--ink);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+/* ── The paper itself ─────────────────────────────────────────────────────── */
+
+.certificate {
+  width: min(880px, 100%);
+  background:
+    /* faint mottling, like old stock */
+    radial-gradient(ellipse 900px 300px at 20% 10%, rgba(190, 160, 90, 0.10), transparent),
+    radial-gradient(ellipse 700px 500px at 85% 90%, rgba(150, 118, 47, 0.08), transparent),
+    var(--paper);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 12px 40px rgba(0, 0, 0, 0.55),
+    0 30px 80px rgba(0, 0, 0, 0.35);
+  padding: clamp(10px, 2vw, 18px);
+  position: relative;
+}
+
+/* engraved double border */
+.cert-inner {
+  border: 3px double var(--gold);
+  outline: 1px solid var(--gold);
+  outline-offset: 3px;
+  padding: clamp(24px, 5vw, 56px) clamp(18px, 5vw, 60px);
+  position: relative;
+}
+
+/* corner ornaments */
+.cert-inner::before,
+.cert-inner::after {
+  content: '✢';
+  position: absolute;
+  color: var(--gold);
+  font-size: 14px;
+  line-height: 1;
+}
+.cert-inner::before { top: 8px; left: 10px; }
+.cert-inner::after  { bottom: 8px; right: 10px; }
+
+/* ── Load choreography ────────────────────────────────────────────────────── */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  animation: reveal 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation-delay: calc(var(--d, 0) * 0.13s);
+}
+@keyframes reveal {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Masthead ─────────────────────────────────────────────────────────────── */
+
+.cert-serial {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--oxblood);
+  margin-bottom: 18px;
+}
+
+.ornament-rule {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--gold);
+  margin-bottom: 26px;
+}
+.ornament-rule::before,
+.ornament-rule::after {
+  content: '';
+  flex: 1;
+  border-top: 1px solid var(--rule);
+}
+.ornament-rule span { font-size: 15px; }
+
+.cert-header { text-align: center; }
+
+.bureau-name {
+  font-family: var(--mono);
+  font-size: clamp(10px, 1.6vw, 12px);
+  font-weight: 600;
+  letter-spacing: 0.34em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  margin-bottom: 18px;
+}
+
+.cert-title {
+  font-size: clamp(34px, 7vw, 58px);
+  font-weight: 550;
+  font-style: italic;
+  font-variation-settings: 'opsz' 144;
+  line-height: 1.06;
+  letter-spacing: -0.01em;
+  margin-bottom: 26px;
+}
+
+.cert-preamble {
+  max-width: 54ch;
+  margin: 0 auto;
+  font-size: clamp(14px, 2.2vw, 16px);
+  line-height: 1.65;
+  color: var(--ink);
+}
+.cert-preamble strong { letter-spacing: 0.06em; }
+.cert-preamble em { color: var(--ink-faded); }
+
+/* ── The figure ───────────────────────────────────────────────────────────── */
+
+.debt-figure {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(10px, 4vw, 36px);
+  margin: clamp(28px, 5vw, 44px) 0;
+  padding: 26px 0;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.fig-flourish {
+  font-size: clamp(22px, 4vw, 34px);
+  color: var(--gold);
+  user-select: none;
+}
+.fig-flourish.flip { transform: scaleX(-1); }
+
+.fig-center { text-align: center; }
+
+.fig-number {
+  font-size: clamp(88px, 20vw, 168px);
+  font-weight: 900;
+  font-variation-settings: 'opsz' 144;
+  line-height: 0.9;
+  font-variant-numeric: tabular-nums;
+  color: var(--oxblood);
+  text-shadow: 3px 3px 0 rgba(150, 118, 47, 0.22);
+}
+.fig-number.is-nil { color: var(--settled); }
+
+.fig-label {
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: clamp(11px, 1.8vw, 13px);
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+}
+
+.fig-sub {
+  margin-top: 8px;
+  font-style: italic;
+  font-size: clamp(12px, 1.8vw, 14px);
+  color: var(--oxblood);
+}
+
+/* rubber stamp */
+.stamp {
+  position: absolute;
+  top: 8px;
+  right: clamp(-6px, 2vw, 28px);
+  padding: 8px 18px;
+  border: 3.5px solid var(--oxblood);
+  border-radius: 6px;
+  color: var(--oxblood);
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: clamp(14px, 2.4vw, 20px);
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  transform: rotate(-8deg) scale(0);
+  opacity: 0;
+  mix-blend-mode: multiply;
+  /* distressed ink */
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 1.6 -0.35'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+.stamp.slam {
+  animation: slam 0.42s cubic-bezier(0.2, 1.6, 0.35, 1) forwards;
+}
+.stamp.settled {
+  border-color: var(--settled);
+  color: var(--settled);
+}
+@keyframes slam {
+  0%   { transform: rotate(-16deg) scale(2.6); opacity: 0; }
+  60%  { transform: rotate(-8deg)  scale(0.94); opacity: 0.95; }
+  100% { transform: rotate(-8deg)  scale(1); opacity: 0.9; }
+}
+
+/* ── Vitals strip ─────────────────────────────────────────────────────────── */
+
+.vitals {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: clamp(30px, 5vw, 46px);
+}
+.vital { text-align: center; }
+.vital-label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  margin-bottom: 6px;
+}
+.vital-value {
+  font-family: var(--mono);
+  font-size: clamp(13px, 2vw, 16px);
+  font-weight: 500;
+  color: var(--ink);
+}
+.vital-value sup { color: var(--oxblood); }
+
+/* ── Ledger ───────────────────────────────────────────────────────────────── */
+
+.ledger-title {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink);
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+
+.ledger-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: clamp(11px, 1.8vw, 13px);
+}
+.ledger-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+  padding: 10px 10px 6px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.ledger-table td {
+  padding: 10px 10px 10px 0;
+  border-bottom: 1px dotted var(--rule);
+  vertical-align: top;
+  color: var(--ink);
+}
+.ledger-table .col-status { text-align: right; padding-right: 0; }
+.ledger-table td.col-status { white-space: nowrap; }
+
+.status-owed,
+.status-settled {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+}
+.status-owed    { color: var(--oxblood); }
+.status-settled { color: var(--settled); }
+
+td.memo { color: var(--ink-faded); font-style: normal; }
+tr.is-credit td { background: rgba(61, 107, 79, 0.06); }
+tr.is-interest td { background: rgba(140, 43, 35, 0.07); font-style: italic; }
+
+.ledger-empty {
+  text-align: center;
+  color: var(--ink-faded);
+  font-style: italic;
+  font-family: var(--serif);
+  padding: 22px 0 !important;
+}
+
+/* ── Attestation ──────────────────────────────────────────────────────────── */
+
+.attestation {
+  display: flex;
+  align-items: center;
+  gap: clamp(20px, 5vw, 48px);
+  margin: clamp(34px, 6vw, 54px) 0 10px;
+}
+
+.seal {
+  flex: 0 0 auto;
+  width: clamp(96px, 16vw, 130px);
+  color: var(--oxblood);
+  opacity: 0.85;
+}
+.seal svg { width: 100%; height: auto; display: block; }
+.seal-text {
+  transform-origin: 60px 60px;
+  animation: seal-spin 40s linear infinite;
+  font-family: var(--mono);
+  fill: currentColor;
+}
+@keyframes seal-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seal-text { animation: none; }
+  .reveal { animation-duration: 0.01s; }
+}
+
+.signatures {
+  flex: 1;
+  display: grid;
+  gap: 26px;
+}
+.sig-line {
+  border-bottom: 1px solid var(--ink);
+  min-height: 40px;
+  display: flex;
+  align-items: flex-end;
+  padding: 0 8px 2px;
+}
+.sig-script {
+  font-family: 'Mrs Saint Delafield', cursive;
+  font-size: 34px;
+  line-height: 1;
+  color: var(--ink);
+  transform: rotate(-3deg);
+}
+.sig-absent {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-faded);
+  opacity: 0.75;
+  padding-bottom: 6px;
+}
+.sig-caption {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faded);
+  margin-top: 6px;
+}
+
+/* ── Fine print ───────────────────────────────────────────────────────────── */
+
+.fine-print {
+  border-top: 1px solid var(--rule);
+  margin-top: 26px;
+  padding-top: 16px;
+}
+.fine-print p {
+  font-size: 10.5px;
+  line-height: 1.7;
+  color: var(--ink-faded);
+  text-align: justify;
+  letter-spacing: 0.01em;
+}
+.fine-print .colophon {
+  margin-top: 12px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.clerk-link {
+  color: var(--oxblood);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--oxblood);
+}
+.clerk-link:hover { border-bottom-style: solid; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Clerk's Office
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.hidden { display: none !important; }
+
+.clerk-gate {
+  max-width: 340px;
+  margin: 36px auto;
+  display: grid;
+  gap: 14px;
+  text-align: center;
+}
+
+.clerk-form {
+  margin: 34px 0 40px;
+  display: grid;
+  gap: 16px;
+}
+.clerk-form .ledger-title { margin-bottom: 8px; }
+
+.form-row {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.form-row .field.grow { flex: 1; min-width: 220px; }
+
+.field { display: grid; gap: 6px; text-align: left; }
+.field-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faded);
+}
+.field-label em { text-transform: none; letter-spacing: 0.04em; font-family: var(--serif); }
+
+input[type="text"],
+input[type="date"],
+input[type="number"],
+input[type="password"],
+select {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: var(--ink);
+  background: rgba(255, 252, 240, 0.6);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  padding: 10px 12px;
+  width: 100%;
+}
+input:focus,
+select:focus {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+}
+
+.field.qty input { width: 80px; }
+
+.btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  padding: 12px 22px;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.12s ease;
+}
+.btn:active { transform: translateY(1px); }
+
+.btn-primary {
+  background: var(--oxblood);
+  color: var(--paper);
+  border: 1px solid var(--oxblood);
+  box-shadow: 3px 3px 0 rgba(150, 118, 47, 0.4);
+}
+.btn-primary:hover { box-shadow: 4px 4px 0 rgba(150, 118, 47, 0.55); }
+.btn-primary:disabled { opacity: 0.6; cursor: wait; }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--ink-faded);
+  border: 1px solid var(--rule);
+}
+.btn-ghost:hover { color: var(--oxblood); border-color: var(--oxblood); }
+
+.btn-small {
+  font-size: 10px;
+  padding: 6px 10px;
+  letter-spacing: 0.12em;
+}
+.btn-danger:hover { color: var(--paper); background: var(--oxblood); border-color: var(--oxblood); }
+
+.form-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.form-error { color: var(--oxblood); font-family: var(--mono); font-size: 12px; }
+.form-ok    { color: var(--settled); font-family: var(--mono); font-size: 12px; }
+
+/* clerk entry cards */
+.record-count {
+  font-weight: 400;
+  color: var(--ink-faded);
+  letter-spacing: 0.1em;
+}
+.clerk-entry {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 14px 0;
+  border-bottom: 1px dotted var(--rule);
+}
+.ce-main { flex: 1; min-width: 240px; }
+.ce-qty {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--oxblood);
+  border: 1.5px solid currentColor;
+  border-radius: 3px;
+  padding: 2px 7px;
+  margin-right: 10px;
+}
+.ce-qty.is-credit { color: var(--settled); }
+.ce-date {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--oxblood);
+  letter-spacing: 0.1em;
+  margin-right: 10px;
+}
+.ce-location { font-weight: 600; font-size: 15px; }
+.ce-memo {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ink-faded);
+  margin-top: 3px;
+}
+.ce-actions { display: flex; gap: 8px; }
+
+.clerk-footer { margin-top: 34px; text-align: center; }
+
+/* ── Small screens ────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .vitals { grid-template-columns: repeat(2, 1fr); row-gap: 18px; }
+  .attestation { flex-direction: column; text-align: center; }
+  .signatures { width: 100%; }
+  .sig-line { justify-content: center; }
+  .ledger-table .col-memo-head { display: none; }
+  .stamp { top: -12px; }
+}

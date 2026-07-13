@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clerk's Office — Bureau of Interpersonal Beverage Debt</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🖋️</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <main class="certificate clerk" id="certificate">
+    <div class="cert-inner">
+
+      <div class="cert-serial">
+        <span>Internal Use Only</span>
+        <span><a href="index.html" class="clerk-link">← Public Record</a></span>
+      </div>
+
+      <div class="ornament-rule"><span>❦</span></div>
+
+      <header class="cert-header">
+        <p class="bureau-name">The Bureau of Interpersonal Beverage Debt</p>
+        <h1 class="cert-title">Clerk's Office</h1>
+        <p class="cert-preamble">Authorized personnel only. All amendments to the record are final-ish.</p>
+      </header>
+
+      <!-- Gate -->
+      <section id="gate" class="clerk-gate">
+        <label class="field">
+          <span class="field-label">Clerk's Passphrase</span>
+          <input type="password" id="gate-password" autocomplete="current-password" placeholder="••••••••">
+        </label>
+        <button class="btn btn-primary" id="gate-btn">Present Credentials</button>
+        <p class="form-error hidden" id="gate-error"></p>
+      </section>
+
+      <!-- Desk -->
+      <section id="desk" class="hidden">
+
+        <form id="entry-form" class="clerk-form">
+          <h2 class="ledger-title">Amend the Record</h2>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">Nature of Entry</span>
+              <select id="f-kind">
+                <option value="debit">Obligation — beer(s) owed by Michael</option>
+                <option value="credit">Settlement — Michael covered it</option>
+              </select>
+            </label>
+            <label class="field qty">
+              <span class="field-label">Beers</span>
+              <input type="number" id="f-qty" value="1" min="1" max="99" required>
+            </label>
+          </div>
+          <div class="form-row">
+            <label class="field">
+              <span class="field-label">Date</span>
+              <input type="date" id="f-date" required>
+            </label>
+            <label class="field grow">
+              <span class="field-label">Establishment</span>
+              <input type="text" id="f-location" maxlength="120" placeholder="e.g. The Rusty Anchor">
+            </label>
+          </div>
+          <label class="field">
+            <span class="field-label">Memorandum <em>(circumstances)</em></span>
+            <input type="text" id="f-memo" maxlength="300" placeholder="e.g. Michael 'forgot his wallet' for the third consecutive time">
+          </label>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="f-submit">Enter into the Record</button>
+            <p class="form-error hidden" id="form-error"></p>
+            <p class="form-ok hidden" id="form-ok">Duly recorded. ✒️</p>
+          </div>
+        </form>
+
+        <div class="clerk-ledger">
+          <h2 class="ledger-title">The Record <span class="record-count" id="record-count"></span></h2>
+          <div id="clerk-entries">
+            <p class="ledger-empty">Consulting the record…</p>
+          </div>
+        </div>
+
+        <p class="clerk-footer">
+          <button class="btn btn-ghost" id="logout-btn">Surrender Credentials</button>
+        </p>
+      </section>
+
+    </div>
+  </main>
+
+  <script src="admin.js"></script>
+</body>
+</html>

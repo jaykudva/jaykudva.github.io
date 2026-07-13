@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Michael Owes Jay Beer — Bureau of Interpersonal Beverage Debt</title>
+  <meta name="description" content="An official accounting of the beers Michael owes Jay. Duly sworn, notarized, and past due.">
+  <meta property="og:title" content="Michael Owes Jay Beer">
+  <meta property="og:description" content="An official accounting of outstanding beverage obligations.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍺</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=IBM+Plex+Mono:wght@400;500;600&family=Mrs+Saint+Delafield&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <main class="certificate" id="certificate">
+    <div class="cert-inner">
+
+      <div class="cert-serial reveal" style="--d: 0">
+        <span>No. <span id="serial">0001</span></span>
+        <span>Series MMXXVI</span>
+      </div>
+
+      <div class="ornament-rule reveal" style="--d: 1"><span>❦</span></div>
+
+      <header class="cert-header reveal" style="--d: 2">
+        <p class="bureau-name">The Bureau of Interpersonal Beverage Debt</p>
+        <h1 class="cert-title">Certificate of<br>Outstanding Obligation</h1>
+        <p class="cert-preamble">
+          Let it be known throughout the land, and entered into the permanent record, that
+          <strong>MICHAEL&nbsp;G.</strong> <em>(full name on file with the Bureau)</em> stands indebted unto
+          <strong>JAY&nbsp;K.</strong> in the amount of
+        </p>
+      </header>
+
+      <section class="debt-figure reveal" style="--d: 3" aria-live="polite">
+        <span class="fig-flourish" aria-hidden="true">❧</span>
+        <div class="fig-center">
+          <div class="fig-number" id="beer-count">—</div>
+          <div class="fig-label" id="beer-label">standard-issue beers</div>
+          <div class="fig-sub hidden" id="fig-sub"></div>
+        </div>
+        <span class="fig-flourish flip" aria-hidden="true">❧</span>
+        <div class="stamp" id="stamp" aria-hidden="true">Past Due</div>
+      </section>
+
+      <section class="vitals reveal" style="--d: 4">
+        <div class="vital">
+          <span class="vital-label">First Incurred</span>
+          <span class="vital-value" id="vital-first">—</span>
+        </div>
+        <div class="vital">
+          <span class="vital-label">Days Outstanding</span>
+          <span class="vital-value" id="vital-days">—</span>
+        </div>
+        <div class="vital">
+          <span class="vital-label">Interest Rate</span>
+          <span class="vital-value" id="vital-rate">0.00%&nbsp;<sup>†</sup></span>
+        </div>
+        <div class="vital">
+          <span class="vital-label">Beers Settled</span>
+          <span class="vital-value" id="vital-settled">—</span>
+        </div>
+      </section>
+
+      <section class="ledger reveal" style="--d: 5">
+        <h2 class="ledger-title">Schedule A — Itemized Record of Obligations</h2>
+        <table class="ledger-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Establishment</th>
+              <th>Memorandum</th>
+              <th class="col-status">Dr&nbsp;·&nbsp;Cr</th>
+            </tr>
+          </thead>
+          <tbody id="ledger-body">
+            <tr><td colspan="4" class="ledger-empty">Consulting the record…</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="attestation reveal" style="--d: 6">
+        <div class="seal" aria-hidden="true">
+          <svg viewBox="0 0 120 120">
+            <defs>
+              <path id="seal-circle" d="M 60,60 m -44,0 a 44,44 0 1,1 88,0 a 44,44 0 1,1 -88,0"/>
+            </defs>
+            <circle cx="60" cy="60" r="57" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <circle cx="60" cy="60" r="53" fill="none" stroke="currentColor" stroke-width="0.75"/>
+            <circle cx="60" cy="60" r="33" fill="none" stroke="currentColor" stroke-width="0.75"/>
+            <g class="seal-text">
+              <text font-size="8.2" letter-spacing="1.6">
+                <textPath href="#seal-circle">✶ BUREAU OF INTERPERSONAL BEVERAGE DEBT ✶ DULY SWORN · EST. IN GOOD FAITH</textPath>
+              </text>
+            </g>
+            <g transform="translate(60,62)">
+              <path d="M -9,-14 L -7,12 Q -7,15 -4,15 L 4,15 Q 7,15 7,12 L 9,-14 Z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M 8,-8 L 12,-8 Q 15,-8 15,-4 L 15,2 Q 15,6 12,6 L 7,6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M -7.5,-9 L 7.5,-9" stroke="currentColor" stroke-width="1"/>
+            </g>
+          </svg>
+        </div>
+        <div class="signatures">
+          <div class="sig-block">
+            <div class="sig-line"><span class="sig-script">Jay K.</span></div>
+            <p class="sig-caption">J.&nbsp;K. — <em>Creditor, of sound mind and thirst</em></p>
+          </div>
+          <div class="sig-block">
+            <div class="sig-line"><span class="sig-absent">signature conspicuously absent</span></div>
+            <p class="sig-caption">M.&nbsp;G. — <em>Debtor, whereabouts known</em></p>
+          </div>
+        </div>
+      </section>
+
+      <footer class="fine-print reveal" style="--d: 7">
+        <p>
+          <sup>†</sup> DELINQUENCY CLAUSE: Should three (3) or more obligations remain outstanding beyond
+          twenty-one (21) days, punitive interest accrues at the rate of one (1) beer immediately and one (1)
+          beer per week thereafter, computed on principal only — even the Bureau does not compound beer.
+          Settlements are applied to the newest obligation first (LIFO: Last In, First Owed), a policy the
+          Debtor is invited to contest in writing. NOTICE: This instrument is legally binding in no jurisdiction
+          whatsoever, yet morally binding in all of them. Obligations denominated herein are payable exclusively
+          in beer of reasonable quality; the Creditor reserves the right to refuse settlement tendered in light
+          domestic lager purchased on promotion. Disputes shall be resolved by rock-paper-scissors, best of
+          three, witnessed. The Bureau thanks you for your continued delinquency.
+        </p>
+        <p class="colophon">
+          Issued by the Bureau of Interpersonal Beverage Debt · <span id="issued-date"></span> ·
+          <a href="admin.html" class="clerk-link">Clerk's Office →</a>
+        </p>
+      </footer>
+
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
