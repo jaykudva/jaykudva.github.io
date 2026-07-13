@@ -270,8 +270,14 @@ body {
   margin-bottom: 4px;
 }
 
+.ledger-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+
 .ledger-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-family: var(--mono);
   font-size: clamp(11px, 1.8vw, 13px);
@@ -291,9 +297,19 @@ body {
   border-bottom: 1px dotted var(--rule);
   vertical-align: top;
   color: var(--ink);
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
+.ledger-table th:nth-child(1),
+.ledger-table td:nth-child(1) { width: 15%; }
+.ledger-table th:nth-child(2),
+.ledger-table td:nth-child(2) { width: 25%; }
+.ledger-table th:nth-child(3),
+.ledger-table td:nth-child(3) { width: auto; }
+.ledger-table th:nth-child(4),
+.ledger-table td:nth-child(4) { width: 110px; }
 .ledger-table .col-status { text-align: right; padding-right: 0; }
-.ledger-table td.col-status { white-space: nowrap; }
+.ledger-table td.col-status { white-space: nowrap; overflow-wrap: normal; }
 
 .status-owed,
 .status-settled {
