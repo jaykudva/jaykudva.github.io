@@ -21,7 +21,7 @@ const CAT_LABEL    = { food: 'Food & Drink', activity: 'Activity', accommodation
 // ── State ─────────────────────────────────────────────────────────────────────
 
 function defaultState() {
-  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [], people: [], homeDays: {} };
+  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [], people: [], homeDays: {}, destination: null };
 }
 
 // Run after loading state — adds new fields and migrates legacy hardcoded people.
@@ -29,7 +29,18 @@ function migrateState() {
   if (!state.flights)  state.flights  = [];
   if (!state.people)   state.people   = [];
   if (!state.homeDays) state.homeDays = {};
+  if (!('destination' in state)) state.destination = null;
   delete state.groups; // no longer used
+
+  // Legacy trips were all CDMX — if flights carry the old CDMX-only field names
+  // and no destination is set yet, backfill it.
+  if (state.destination == null && state.flights.some(f => f.depHourCDMX != null || f.arrHourCDMX != null)) {
+    state.destination = { label: 'CDMX', tz: 'America/Mexico_City', lat: 19.4195, lng: -99.1617 };
+  }
+  for (const f of state.flights) {
+    if (f.depHourCDMX != null) { f.depHourTrip = f.depHourCDMX; delete f.depHourCDMX; }
+    if (f.arrHourCDMX != null) { f.arrHourTrip = f.arrHourCDMX; delete f.arrHourCDMX; }
+  }
 
   // If no people defined yet but events/flights reference old hardcoded IDs, auto-migrate.
   if (state.people.length === 0) {
@@ -234,6 +245,7 @@ async function submitPassword() {
     lastSyncedAt = updatedAt;
     hidePasswordGate();
     updateHomeButton();
+    updateDestinationButton();
     render();
     scrollToHour(17);
     startSyncPoll();
@@ -305,15 +317,22 @@ function getDayHeaderH() {
 
 // ── Flight / timezone helpers ─────────────────────────────────────────────────
 
-const TRIP_TZ = 'America/Mexico_City';
+// state.destination is the source of truth for trip timezone/label; fall back
+// gracefully for trips that haven't set one yet.
+function tripTz() {
+  return state.destination?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+function tripLabel() {
+  return state.destination?.label || 'destination';
+}
 
-// Convert an ISO datetime string to a fractional hour in CDMX time (e.g. 14.5 = 2:30 PM)
+// Convert an ISO datetime string to a fractional hour in trip time (e.g. 14.5 = 2:30 PM)
 function toTripHour(isoStr) {
   if (!isoStr) return null;
   const d = new Date(isoStr);
   if (isNaN(d)) return null;
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: TRIP_TZ, hour: 'numeric', minute: 'numeric', hour12: false,
+    timeZone: tripTz(), hour: 'numeric', minute: 'numeric', hour12: false,
   }).formatToParts(d);
   let h = parseInt(parts.find(p => p.type === 'hour')?.value  ?? '0', 10);
   const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10);
@@ -321,13 +340,13 @@ function toTripHour(isoStr) {
   return h + m / 60;
 }
 
-// Return "YYYY-MM-DD" for an ISO datetime in CDMX time
+// Return "YYYY-MM-DD" for an ISO datetime in trip time
 function toTripDateStr(isoStr) {
   if (!isoStr) return null;
-  return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: TRIP_TZ });
+  return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: tripTz() });
 }
 
-// Return trip day number (1-based) for an ISO datetime interpreted in CDMX time, or null
+// Return trip day number (1-based) for an ISO datetime interpreted in trip time, or null
 function isoToTripDay(isoStr) {
   const dateStr = toTripDateStr(isoStr);
   if (!dateStr || !state.startDate) return null;
@@ -350,6 +369,14 @@ function flightDay(f) {
 function flightMatchesView(flight) {
   if (viewFilter === 'all') return true;
   return (flight.people || []).includes(viewFilter);
+}
+
+// A departure flight leaves FROM the trip destination; an arrival flight lands there.
+// Prefer the explicitly stored direction (set on save, user-correctable); fall back
+// to the old tz-comparison heuristic for flights saved before direction existed.
+function isTripDeparture(f) {
+  if (f.direction) return f.direction === 'outbound';
+  return f.departure?.tz === tripTz();
 }
 
 // ── View filter helpers ───────────────────────────────────────────────────────
@@ -543,14 +570,11 @@ function makeDayCol(day) {
     const arrDay = flightDay(f);
     if (arrDay !== day) return;
 
-    const depHour       = f.depHourCDMX;
-    const arrHour       = f.arrHourCDMX;
+    const depHour       = f.depHourTrip;
+    const arrHour       = f.arrHourTrip;
     if (depHour == null || arrHour == null) return;
 
-    // A departure flight leaves FROM the trip city; an arrival flight lands there.
-    const isTripDeparture = f.departure?.tz === TRIP_TZ;
-
-    if (isTripDeparture) {
+    if (isTripDeparture(f)) {
       // Block out everything AFTER departure — they've left
       const greyStart = depHour - START_HOUR;
       const greyHours = N_HOURS - greyStart;
@@ -561,12 +585,12 @@ function makeDayCol(day) {
         grayout.style.height = `calc(${greyHours} * var(--hour-height))`;
         const lbl = document.createElement('div');
         lbl.className = 'flight-grayout-label';
-        lbl.textContent = 'Left CDMX';
+        lbl.textContent = `Left ${tripLabel()}`;
         grayout.appendChild(lbl);
         col.appendChild(grayout);
       }
     } else {
-      // Block out everything BEFORE arrival — not in CDMX yet
+      // Block out everything BEFORE arrival — not at the destination yet
       const greyHours = depHour - START_HOUR;
       if (greyHours > 0) {
         const grayout = document.createElement('div');
@@ -574,7 +598,7 @@ function makeDayCol(day) {
         grayout.style.height = `calc(${greyHours} * var(--hour-height))`;
         const lbl = document.createElement('div');
         lbl.className = 'flight-grayout-label';
-        lbl.textContent = 'Not in CDMX';
+        lbl.textContent = `Not in ${tripLabel()} yet`;
         grayout.appendChild(lbl);
         col.appendChild(grayout);
       }
@@ -1055,13 +1079,12 @@ async function renderTravelTimes() {
       const flightVirtualEvents = (state.flights || [])
         .filter(f => flightDay(f) === day && flightMatchesView(f))
         .flatMap(f => {
-          const isTripDeparture = f.departure?.tz === TRIP_TZ;
-          if (isTripDeparture) {
-            if (f.departure?.lat == null || f.depHourCDMX == null) return [];
-            return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: f.depHourCDMX, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
+          if (isTripDeparture(f)) {
+            if (f.departure?.lat == null || f.depHourTrip == null) return [];
+            return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: f.depHourTrip, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
           } else {
-            if (f.arrival?.lat == null || f.arrHourCDMX == null) return [];
-            return [{ id: `__flight_${f.id}`, _isDep: false, hour: f.arrHourCDMX, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
+            if (f.arrival?.lat == null || f.arrHourTrip == null) return [];
+            return [{ id: `__flight_${f.id}`, _isDep: false, hour: f.arrHourTrip, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
           }
         });
 
@@ -1128,13 +1151,12 @@ async function renderTravelTimes() {
     const flightVirtualEvents = (state.flights || [])
       .filter(f => flightDay(f) === day && flightMatchesView(f))
       .flatMap(f => {
-        const isTripDeparture = f.departure?.tz === TRIP_TZ;
-        if (isTripDeparture) {
-          if (f.departure?.lat == null || f.depHourCDMX == null) return [];
-          return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: f.depHourCDMX, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
+        if (isTripDeparture(f)) {
+          if (f.departure?.lat == null || f.depHourTrip == null) return [];
+          return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: f.depHourTrip, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
         } else {
-          if (f.arrival?.lat == null || f.arrHourCDMX == null) return [];
-          return [{ id: `__flight_${f.id}`, _isDep: false, hour: f.arrHourCDMX, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
+          if (f.arrival?.lat == null || f.arrHourTrip == null) return [];
+          return [{ id: `__flight_${f.id}`, _isDep: false, hour: f.arrHourTrip, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
         }
       });
 
@@ -1355,11 +1377,18 @@ const TILE_DARK  = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.pn
 const TILE_LIGHT = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
 const TILE_ATTR  = '© <a href="https://openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/attributions">CARTO</a>';
 
+// Center priority: destination coords → home coords → world view.
+function defaultMapView() {
+  if (state.destination?.lat != null) return { center: [state.destination.lat, state.destination.lng], zoom: 14 };
+  if (state.home?.lat != null)        return { center: [state.home.lat, state.home.lng], zoom: 14 };
+  return { center: [20, 0], zoom: 2 };
+}
+
 function initMap() {
   if (leafletMap) return;
+  const { center, zoom } = defaultMapView();
   leafletMap = L.map('leaflet-map', {
-    center: [19.4195, -99.1617], // Tabasco 261, Roma Norte, CDMX
-    zoom:   14,
+    center, zoom,
     zoomControl: true,
   });
   mapTileLayer = L.tileLayer(isDark ? TILE_DARK : TILE_LIGHT, {
@@ -1448,14 +1477,14 @@ function renderMap() {
     const fDay = flightDay(f);
     if (mapDayFilter !== null && fDay !== mapDayFilter) return;
 
-    const isTripDeparture = f.departure?.tz === TRIP_TZ;
+    const departing = isTripDeparture(f);
 
-    // Only show the trip-city airport: departure airport for outbound, arrival for inbound.
-    // This keeps JFK/etc off the map since the trip is in CDMX.
+    // Only show the trip-destination airport: departure airport for outbound, arrival for inbound.
+    // This keeps origin airports off the map since the trip isn't there.
     const pts = [];
-    if (isTripDeparture && f.departure?.lat != null)
+    if (departing && f.departure?.lat != null)
       pts.push({ airport: f.departure, label: `✈ Departs ${f.departure.iata}` });
-    else if (!isTripDeparture && f.arrival?.lat != null)
+    else if (!departing && f.arrival?.lat != null)
       pts.push({ airport: f.arrival, label: `✈ Arrives ${f.arrival.iata}` });
 
     pts.forEach(({ airport, label }) => {
@@ -1488,9 +1517,10 @@ function renderMap() {
   if (hasAnyMarker) {
     const group = L.featureGroup(mapMarkers);
     leafletMap.fitBounds(group.getBounds().pad(0.3));
-  } else if (state.home == null) {
-    // No home, no events: default to CDMX
-    leafletMap.setView([19.4195, -99.1617], 14);
+  } else {
+    // No home, no events: fall back to destination → home → world view
+    const { center, zoom } = defaultMapView();
+    leafletMap.setView(center, zoom);
   }
 }
 
@@ -2090,6 +2120,106 @@ homeModalOverlay.addEventListener('keydown', e => {
   if (e.key === 'Enter')  homeModalSave.click();
 });
 
+// ── Destination ───────────────────────────────────────────────────────────────
+
+const btnDestination   = document.getElementById('btn-destination');
+const destinationLabel = document.getElementById('destination-label');
+const destModalOverlay = document.getElementById('destination-modal-overlay');
+const destLabelEl      = document.getElementById('dest-label');
+const destTzEl         = document.getElementById('dest-tz');
+const destAddressEl    = document.getElementById('dest-address');
+const btnDestLocate    = document.getElementById('btn-dest-locate');
+const destLocStatus    = document.getElementById('dest-location-status');
+const destModalClear   = document.getElementById('destination-modal-clear');
+const destModalCancel  = document.getElementById('destination-modal-cancel');
+const destModalSave    = document.getElementById('destination-modal-save');
+
+let pendingDestLocation = null;
+
+function updateDestinationButton() {
+  const d = state.destination;
+  btnDestination.classList.toggle('is-set', !!d);
+  destinationLabel.textContent = d?.label || 'Set destination';
+}
+
+function populateTimezoneOptions() {
+  if (destTzEl.options.length) return; // populate once
+  const tzs = typeof Intl.supportedValuesOf === 'function'
+    ? Intl.supportedValuesOf('timeZone')
+    : [Intl.DateTimeFormat().resolvedOptions().timeZone];
+  for (const tz of tzs) destTzEl.appendChild(new Option(tz, tz));
+}
+
+function openDestinationModal() {
+  populateTimezoneOptions();
+  const d = state.destination;
+  destLabelEl.value   = d?.label || '';
+  destTzEl.value       = d?.tz || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  destAddressEl.value  = d?.address || '';
+  pendingDestLocation  = d?.lat != null ? { lat: d.lat, lng: d.lng, address: d.address } : null;
+  destLocStatus.className   = d?.lat != null ? 'location-status ok' : 'location-status';
+  destLocStatus.textContent = d?.lat != null ? `Saved: ${d.lat.toFixed(5)}, ${d.lng.toFixed(5)}` : '';
+  destModalClear.classList.toggle('hidden', !d);
+  destModalOverlay.classList.remove('hidden');
+  setTimeout(() => destLabelEl.focus(), 50);
+}
+
+btnDestination.addEventListener('click', openDestinationModal);
+
+btnDestLocate.addEventListener('click', async () => {
+  const val = destAddressEl.value.trim();
+  if (!val) {
+    destLocStatus.className   = 'location-status err';
+    destLocStatus.textContent = 'Enter an address or city.';
+    return;
+  }
+  btnDestLocate.classList.add('loading');
+  destLocStatus.className   = 'location-status info';
+  destLocStatus.textContent = 'Geocoding…';
+  const result = await geocodeAddress(val);
+  if (result) {
+    pendingDestLocation       = { ...result };
+    destLocStatus.className   = 'location-status ok';
+    destLocStatus.textContent = `Found: ${result.lat.toFixed(5)}, ${result.lng.toFixed(5)}`;
+  } else {
+    pendingDestLocation       = null;
+    destLocStatus.className   = 'location-status err';
+    destLocStatus.textContent = 'Location not found. Try a more specific address.';
+  }
+  btnDestLocate.classList.remove('loading');
+});
+
+destModalSave.addEventListener('click', () => {
+  const label = destLabelEl.value.trim() || 'destination';
+  state.destination = {
+    label, tz: destTzEl.value,
+    lat: pendingDestLocation?.lat ?? state.destination?.lat ?? null,
+    lng: pendingDestLocation?.lng ?? state.destination?.lng ?? null,
+    address: pendingDestLocation?.address ?? destAddressEl.value.trim() ?? null,
+  };
+  save();
+  updateDestinationButton();
+  destModalOverlay.classList.add('hidden');
+  if (activeTab === 'map') renderMap();
+  render();
+});
+
+destModalClear.addEventListener('click', () => {
+  state.destination = null;
+  save();
+  updateDestinationButton();
+  destModalOverlay.classList.add('hidden');
+  if (activeTab === 'map') renderMap();
+  render();
+});
+
+destModalCancel.addEventListener('click', () => destModalOverlay.classList.add('hidden'));
+destModalOverlay.addEventListener('click', e => { if (e.target === destModalOverlay) destModalOverlay.classList.add('hidden'); });
+destModalOverlay.addEventListener('keydown', e => {
+  if (e.key === 'Escape') destModalOverlay.classList.add('hidden');
+  if (e.key === 'Enter')  destModalSave.click();
+});
+
 // ── People manager ────────────────────────────────────────────────────────────
 
 const peopleModalOverlay = document.getElementById('people-modal-overlay');
@@ -2206,10 +2336,14 @@ function openFlightModal(id = null) {
       fltDate.value   = f.date;
       renderPeopleChips('flt-people-chips', f.people || [], 'active');
       fltSelectedResult = f;
-      // depHourCDMX is already stored in CDMX time, so label both as CDMX
-      fltDepTzEl.textContent = '(CDMX time)';
-      fltDepTime.value  = f.depHourCDMX != null ? hourToTimeStr(f.depHourCDMX) : '';
-      fltArrTime.value  = f.arrHourCDMX != null ? hourToTimeStr(f.arrHourCDMX) : '';
+      // depHourTrip/arrHourTrip are already stored in trip time, so label both as trip time
+      fltDepTzEl.textContent = `(${tripLabel()} time)`;
+      fltArrTzEl.textContent = `(${tripLabel()} time)`;
+      fltDepTime.value  = f.depHourTrip != null ? hourToTimeStr(f.depHourTrip) : '';
+      fltArrTime.value  = f.arrHourTrip != null ? hourToTimeStr(f.arrHourTrip) : '';
+      const departing = isTripDeparture(f);
+      fltDirInbound.checked  = !departing;
+      fltDirOutbound.checked = departing;
       fltTimesEl.classList.remove('hidden');
       fltSave.classList.remove('hidden');
       fltSave.textContent = 'Save Changes';
@@ -2285,10 +2419,13 @@ fltLookup.addEventListener('click', async () => {
   }
 });
 
-const fltTimesEl  = document.getElementById('flt-times');
-const fltDepTime  = document.getElementById('flt-dep-time');
-const fltArrTime  = document.getElementById('flt-arr-time');
-const fltDepTzEl  = document.querySelector('.flt-dep-tz');
+const fltTimesEl     = document.getElementById('flt-times');
+const fltDepTime     = document.getElementById('flt-dep-time');
+const fltArrTime     = document.getElementById('flt-arr-time');
+const fltDepTzEl     = document.querySelector('.flt-dep-tz');
+const fltArrTzEl     = document.getElementById('flt-arr-tz');
+const fltDirInbound  = document.getElementById('flt-dir-inbound');
+const fltDirOutbound = document.getElementById('flt-dir-outbound');
 
 function selectFlightResult(f) {
   fltSelectedResult = f;
@@ -2297,10 +2434,17 @@ function selectFlightResult(f) {
 
   // Show time inputs — pre-fill from API if times are available, else leave blank
   fltDepTzEl.textContent = f.departure.tz ? `(${f.departure.tz.split('/').pop().replace('_', ' ')})` : '(local)';
+  fltArrTzEl.textContent = `(${tripLabel()} time)`;
   fltDepTime.value = f.departure.time ? isoToTimeInput(f.departure.time, f.departure.tz) : '';
-  fltArrTime.value = f.arrival.time   ? isoToTimeInput(f.arrival.time,   TRIP_TZ)        : '';
+  fltArrTime.value = f.arrival.time   ? isoToTimeInput(f.arrival.time,   tripTz())        : '';
   fltTimesEl.classList.remove('hidden');
   fltSave.classList.remove('hidden');
+
+  // Guess direction from arrival tz — arriving at the trip destination's tz means inbound.
+  // If no destination is set yet, default to inbound (the common "first flight" case).
+  const guessInbound = state.destination == null || f.arrival?.tz === tripTz();
+  fltDirInbound.checked  = guessInbound;
+  fltDirOutbound.checked = !guessInbound;
 }
 
 // Convert an ISO datetime to "HH:MM" for <input type="time"> in the given timezone
@@ -2310,7 +2454,7 @@ function isoToTimeInput(isoStr, tz) {
     const d = new Date(isoStr);
     if (isNaN(d)) return '';
     const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz || TRIP_TZ, hour: '2-digit', minute: '2-digit', hour12: false,
+      timeZone: tz || tripTz(), hour: '2-digit', minute: '2-digit', hour12: false,
     }).formatToParts(d);
     const h = parts.find(p => p.type === 'hour')?.value   ?? '00';
     const m = parts.find(p => p.type === 'minute')?.value ?? '00';
@@ -2351,20 +2495,23 @@ function buildIsoInTz(dateStr, timeStr, tz) {
     const probe = new Date(`${dateStr}T12:00:00Z`);
     const probeLocal = fmtUtc.formatToParts(probe);
     const ph = parseInt(probeLocal.find(p=>p.type==='hour').value);
-    const offsetH = ph - 12; // approximate offset in hours
-    const isoOffset = offsetH >= 0 ? `+${String(offsetH).padStart(2,'0')}:00` : `-${String(Math.abs(offsetH)).padStart(2,'0')}:00`;
+    const pm = parseInt(probeLocal.find(p=>p.type==='minute').value);
+    const offsetMin  = (ph * 60 + pm) - 12 * 60; // total offset in minutes (handles half-hour zones like India)
+    const sign       = offsetMin >= 0 ? '+' : '-';
+    const absMin     = Math.abs(offsetMin);
+    const isoOffset  = `${sign}${String(Math.floor(absMin / 60)).padStart(2,'0')}:${String(absMin % 60).padStart(2,'0')}`;
     return `${dateStr}T${timeStr}:00${isoOffset}`;
   } catch { return null; }
 }
 
-// Format an ISO datetime for display in CDMX time
-function formatIsoForDisplay(isoStr, cdmxOnly = false) {
+// Format an ISO datetime for display in trip time
+function formatIsoForDisplay(isoStr, tripTimeOnly = false) {
   if (!isoStr) return '?';
   try {
     const d = new Date(isoStr);
-    // Show time in CDMX timezone
-    const cdmx = d.toLocaleTimeString('en-US', { timeZone: TRIP_TZ, hour: 'numeric', minute: '2-digit', hour12: true });
-    if (cdmxOnly) return cdmx + ' CDMX';
+    // Show time in trip destination's timezone
+    const tripTime = d.toLocaleTimeString('en-US', { timeZone: tripTz(), hour: 'numeric', minute: '2-digit', hour12: true });
+    if (tripTimeOnly) return `${tripTime} ${tripLabel()}`;
     // For departure show local departure time
     const local = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
     return local;
@@ -2382,12 +2529,13 @@ fltSave.addEventListener('click', () => {
     return;
   }
 
-  // For departure: convert from departure airport local time to CDMX time
+  // For departure: convert from departure airport local time to trip time
   // We do this by constructing an ISO string with the departure timezone offset,
-  // then reading it back in CDMX time using Intl.
-  const depDate  = fltDate.value;
-  const depIso   = buildIsoInTz(depDate, fltDepTime.value, fltSelectedResult.departure.tz);
-  const depCDMX  = depIso ? toTripHour(depIso) : depHour; // fallback: treat as CDMX directly
+  // then reading it back in trip time using Intl.
+  const depDate    = fltDate.value;
+  const depIso     = buildIsoInTz(depDate, fltDepTime.value, fltSelectedResult.departure.tz);
+  const depTripHr  = depIso ? toTripHour(depIso) : depHour; // fallback: treat as trip time directly
+  const direction  = fltDirOutbound.checked ? 'outbound' : 'inbound';
 
   const people = [...document.querySelectorAll('#flt-people-chips .person-chip.active')].map(c => c.dataset.person);
   if (!state.flights) state.flights = [];
@@ -2397,8 +2545,9 @@ fltSave.addEventListener('click', () => {
     date:        fltDate.value,
     ...fltSelectedResult,
     people,          // after spread so chip selection always wins
-    depHourCDMX: depCDMX,
-    arrHourCDMX: arrHour,   // arrival time input is already in CDMX
+    direction,
+    depHourTrip: depTripHr,
+    arrHourTrip: arrHour,   // arrival time input is already in trip time
   };
 
   if (fltEditingId) {
@@ -2406,6 +2555,18 @@ fltSave.addEventListener('click', () => {
     if (idx !== -1) state.flights[idx] = entry;
   } else {
     state.flights.push(entry);
+  }
+
+  // Auto-suggest a destination from the first inbound flight, if none is set yet.
+  if (state.destination == null && direction === 'inbound' && entry.arrival?.tz) {
+    state.destination = {
+      label: entry.arrival.name || entry.arrival.iata || 'destination',
+      tz:    entry.arrival.tz,
+      lat:   entry.arrival.lat ?? null,
+      lng:   entry.arrival.lng ?? null,
+    };
+    updateDestinationButton();
+    setSyncStatus(`Destination set to ${state.destination.label} — tap 🌍 to change`, 'saved');
   }
 
   save();
@@ -2544,6 +2705,7 @@ async function showLandingPage() {
     if (ok) {
       hidePasswordGate();
       updateHomeButton();
+      updateDestinationButton();
       render();
       scrollToHour(17);
       startSyncPoll();

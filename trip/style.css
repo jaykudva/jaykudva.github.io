@@ -291,7 +291,8 @@ html, body {
 }
 
 /* Home modal */
-#home-modal {
+#home-modal,
+#destination-modal {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -303,7 +304,8 @@ html, body {
   gap: 16px;
   box-shadow: 0 24px 64px rgba(0,0,0,0.6);
 }
-#home-modal h3 { font-size: 16px; font-weight: 600; }
+#home-modal h3,
+#destination-modal h3 { font-size: 16px; font-weight: 600; }
 
 /* Map legend */
 #map-legend {
@@ -954,7 +956,8 @@ body.is-dragging .travel-indicator {
 /* ── Modals ── */
 #modal-overlay,
 #home-modal-overlay,
-#flight-modal-overlay {
+#flight-modal-overlay,
+#destination-modal-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.65);
   display: flex; align-items: center; justify-content: center;
@@ -963,7 +966,8 @@ body.is-dragging .travel-indicator {
 }
 #modal-overlay.hidden,
 #home-modal-overlay.hidden,
-#flight-modal-overlay.hidden { display: none !important; }
+#flight-modal-overlay.hidden,
+#destination-modal-overlay.hidden { display: none !important; }
 
 #modal {
   background: var(--surface);
@@ -1302,12 +1306,14 @@ body.is-dragging .travel-indicator {
   /* Modals: bottom sheet */
   #modal-overlay,
   #flight-modal-overlay,
-  #home-modal-overlay {
+  #home-modal-overlay,
+  #destination-modal-overlay {
     align-items: flex-end;
   }
   #modal,
   #flight-modal,
-  #home-modal {
+  #home-modal,
+  #destination-modal {
     width: 100%;
     max-width: 100%;
     border-radius: 16px 16px 0 0;
