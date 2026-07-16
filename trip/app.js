@@ -283,6 +283,20 @@ let mapTileLayer = null;
 let mapMarkers   = [];
 let mapDayFilter = null;   // null = all, integer = specific day
 let isDark       = localStorage.getItem('trip-theme') !== 'light';
+let agendaDay    = null;   // mobile agenda's selected day — lazily defaulted to "today" on first render
+
+const mobileMQ = window.matchMedia('(max-width: 640px)');
+function isMobile() { return mobileMQ.matches; }
+
+// Default agendaDay to today (if within the trip's range) else day 1.
+function defaultAgendaDay() {
+  if (state.startDate) {
+    const today = new Date();
+    const diff = Math.round((new Date(today.getFullYear(), today.getMonth(), today.getDate()) - parseLocalDate(state.startDate)) / 86400000) + 1;
+    if (diff >= 1 && diff <= getDayCount()) return diff;
+  }
+  return 1;
+}
 
 // ── Derived helpers ───────────────────────────────────────────────────────────
 
@@ -456,6 +470,46 @@ function flightVirtualEventsForDay(day) {
     });
 }
 
+// Sorted list of point-in-time items (events + flight virtual events with coords)
+// for a day — the shared input to travel-gap and home-distance calculations.
+function dayTravelItems(day) {
+  return [
+    ...state.events.filter(e => e.day === day && e.hour != null && e.location?.lat != null),
+    ...flightVirtualEventsForDay(day),
+  ].sort((a, b) => a.hour - b.hour);
+}
+
+// Given a day's sorted travel items, decide which consecutive pairs are close
+// enough (≤30 min gap) to need a between-event travel pill, and which items'
+// unpaired ends need a home-distance pill. Shared by the desktop calendar's
+// absolutely-positioned indicators and the mobile agenda's inline pills.
+function computeTravelPairs(dayEvents, home) {
+  const pairs = [];
+  for (let i = 0; i < dayEvents.length - 1; i++) {
+    const a = dayEvents[i], b = dayEvents[i + 1];
+    const gap = b.hour - (a.hour + (a.duration ?? 1));
+    if (gap <= 0.5) pairs.push({ a, b });
+  }
+
+  const homeBefore = []; // items needing a home → item pill
+  const homeAfter  = []; // items needing an item → home pill
+  if (home) {
+    for (const evt of dayEvents) {
+      const isFlightArrival   = evt.id.startsWith('__flight_') && !evt._isDep;
+      const isFlightDeparture = evt._isDep === true;
+      const hasPred = dayEvents.some(o =>
+        o.id !== evt.id && (evt.hour - (o.hour + (o.duration ?? 1))) <= 0.5 && o.hour <= evt.hour
+      );
+      const hasSucc = dayEvents.some(o =>
+        o.id !== evt.id && (o.hour - (evt.hour + (evt.duration ?? 1))) <= 0.5 && o.hour >= evt.hour
+      );
+      if (!hasPred && !isFlightArrival)   homeBefore.push(evt);
+      if (!hasSucc && !isFlightDeparture) homeAfter.push(evt);
+    }
+  }
+  return { pairs, homeBefore, homeAfter };
+}
+
 // ── View filter helpers ───────────────────────────────────────────────────────
 
 // Should this event show in the current viewFilter?
@@ -500,6 +554,7 @@ const calContainer = document.getElementById('calendar-container');
 const calScroll    = document.getElementById('calendar-scroll');
 const daysArea     = document.getElementById('days-area');
 const timeGutter   = document.getElementById('time-gutter');
+const agendaView   = document.getElementById('agenda-view');
 const modalOverlay = document.getElementById('modal-overlay');
 const modalTitle   = document.getElementById('modal-title');
 const evtTitle     = document.getElementById('evt-title');
@@ -569,16 +624,28 @@ function render() {
   endDateEl.value   = state.endDate || '';
 
   renderFilterBar();
-  renderTimeGutter();
-  renderDays();
   renderUnscheduled();
-  updateHourHeight();
-  updateColumnWidths();
+
+  const mobileAgenda = activeTab === 'calendar' && isMobile();
+  calContainer.classList.toggle('hidden', mobileAgenda);
+  agendaView.classList.toggle('hidden', !mobileAgenda);
+
+  if (mobileAgenda) {
+    const n = getDayCount();
+    if (agendaDay == null || agendaDay < 1 || agendaDay > n) agendaDay = defaultAgendaDay();
+    renderAgenda();
+    renderAgendaTravelTimes();
+  } else {
+    renderTimeGutter();
+    renderDays();
+    updateHourHeight();
+    updateColumnWidths();
+  }
 
   if (activeTab === 'map') { renderMapDayStrip(); renderMap(); }
 
   // Async: fetch travel times and inject indicators after render settles
-  if (activeTab === 'calendar') renderTravelTimes();
+  if (activeTab === 'calendar' && !mobileAgenda) renderTravelTimes();
 }
 
 function renderTimeGutter() {
@@ -920,6 +987,8 @@ function renderUnscheduled() {
     chip.addEventListener('dragstart', onDragStart);
     chip.addEventListener('dragend',   onDragEnd);
     chip.addEventListener('dblclick',  () => openModal(evt.id));
+    // Double-tap isn't a natural gesture on touch — a single tap edits on mobile.
+    if (isMobile()) chip.addEventListener('click', () => openModal(evt.id));
     pool.appendChild(chip);
   });
 }
@@ -1123,6 +1192,43 @@ function routeKey(from, to) {
 
 // Render travel time indicators for back-to-back events on each day.
 // "Back-to-back" = event B starts within 30 min of event A ending.
+// Collect every route key needed across all days (grid + agenda both call this),
+// then fetch all DB-cached ones in a single round-trip. Only true misses (not in
+// DB) fall through to per-call GraphHopper lookups, staggered by getDrivingInfo.
+async function prefetchAllRouteKeys(signal) {
+  const n = getDayCount();
+  const neededKeys = new Set();
+
+  for (let day = 1; day <= n; day++) {
+    const home = showHomeTravel ? getHomeForDay(day) : null;
+    const dayEvents = dayTravelItems(day);
+    const { pairs, homeBefore, homeAfter } = computeTravelPairs(dayEvents, home);
+
+    for (const { a, b } of pairs) neededKeys.add(routeKey(a.location, b.location));
+    for (const evt of homeBefore) neededKeys.add(routeKey(home, evt.location));
+    for (const evt of homeAfter)  neededKeys.add(routeKey(evt.location, home));
+  }
+
+  const uncachedKeys = [...neededKeys].filter(k => !_routeMemCache.has(k));
+  if (uncachedKeys.length === 0) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/routes/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Trip-Password': syncPassword, 'X-Trip-Id': tripId },
+      body: JSON.stringify({ keys: uncachedKeys }),
+      signal,
+    });
+    if (res.ok) {
+      const { results } = await res.json();
+      for (const [key, val] of Object.entries(results)) _routeMemCache.set(key, val);
+      console.log(`[bulk] pre-warmed ${Object.keys(results).length}/${uncachedKeys.length} routes from DB`);
+    }
+  } catch (err) {
+    // non-fatal (including AbortError) — individual getDrivingInfo calls still work
+  }
+}
+
 async function renderTravelTimes() {
   if (_travelAbort) _travelAbort.abort();
   _travelAbort = new AbortController();
@@ -1132,66 +1238,8 @@ async function renderTravelTimes() {
   const n = getDayCount();
   if (n === 0) return;
 
-  // ── Bulk DB prefetch ──────────────────────────────────────────────────────
-  // Collect every route key we'll need this render pass, then fetch all
-  // DB-cached ones in a single round-trip before starting the indicator loop.
-  // Only true misses (not in DB) will hit GraphHopper, staggered as before.
-  {
-    const neededKeys = new Set();
-
-    for (let day = 1; day <= n; day++) {
-      const home = showHomeTravel ? getHomeForDay(day) : null;
-      const dayEvents = [
-        ...state.events.filter(e => e.day === day && e.hour != null && e.location?.lat != null),
-        ...flightVirtualEventsForDay(day),
-      ].sort((a, b) => a.hour - b.hour);
-
-      for (let i = 0; i < dayEvents.length - 1; i++) {
-        const a = dayEvents[i];
-        const b = dayEvents[i + 1];
-        const gap = b.hour - (a.hour + (a.duration ?? 1));
-        if (gap <= 0.5) neededKeys.add(routeKey(a.location, b.location));
-      }
-
-      if (home) {
-        for (const evt of dayEvents) {
-          const isFlightArrival   = evt.id.startsWith('__flight_') && !evt._isDep;
-          const isFlightDeparture = evt._isDep === true;
-          const hasPred = dayEvents.some(o =>
-            o.id !== evt.id && (evt.hour - (o.hour + (o.duration ?? 1))) <= 0.5 && o.hour <= evt.hour
-          );
-          const hasSucc = dayEvents.some(o =>
-            o.id !== evt.id && (o.hour - (evt.hour + (evt.duration ?? 1))) <= 0.5 && o.hour >= evt.hour
-          );
-          if (!hasPred && !isFlightArrival)   neededKeys.add(routeKey(home, evt.location));
-          if (!hasSucc && !isFlightDeparture) neededKeys.add(routeKey(evt.location, home));
-        }
-      }
-    }
-
-    const uncachedKeys = [...neededKeys].filter(k => !_routeMemCache.has(k));
-    if (uncachedKeys.length > 0) {
-      try {
-        const res = await fetch(`${API_BASE}/api/routes/bulk`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Trip-Password': syncPassword, 'X-Trip-Id': tripId },
-          body: JSON.stringify({ keys: uncachedKeys }),
-          signal,
-        });
-        if (res.ok) {
-          const { results } = await res.json();
-          for (const [key, val] of Object.entries(results)) {
-            _routeMemCache.set(key, val);
-          }
-          console.log(`[bulk] pre-warmed ${Object.keys(results).length}/${uncachedKeys.length} routes from DB`);
-        }
-      } catch (err) {
-        if (err.name === 'AbortError') return;
-        // non-fatal — individual calls will still work
-      }
-    }
-    if (signal.aborted) return;
-  }
+  await prefetchAllRouteKeys(signal);
+  if (signal.aborted) return;
 
   for (let day = 1; day <= n; day++) {
     if (signal.aborted) return;
@@ -1201,19 +1249,13 @@ async function renderTravelTimes() {
     // Inject flight virtual events for home-travel distance calculation.
     // Arrival flights  → virtual event at arrival airport (→ show airport→home pill).
     // Departure flights → virtual event at departure airport (→ show home→airport pill).
-    const dayEvents = [
-      ...state.events.filter(e => e.day === day && e.hour != null && e.location?.lat != null),
-      ...flightVirtualEventsForDay(day),
-    ].sort((a, b) => a.hour - b.hour);
+    const dayEvents = dayTravelItems(day);
+    const home = showHomeTravel ? getHomeForDay(day) : null;
+    const { pairs, homeBefore, homeAfter } = computeTravelPairs(dayEvents, home);
 
-    for (let i = 0; i < dayEvents.length - 1; i++) {
+    for (const { a, b } of pairs) {
       if (signal.aborted) return;
-      const a = dayEvents[i];
-      const b = dayEvents[i + 1];
-
       const aEndHour = a.hour + (a.duration ?? 1);
-      const gap      = b.hour - aEndHour;
-      if (gap > 0.5) continue; // more than 30 min gap — skip
 
       const info = await getDrivingInfo(a.location, b.location, signal);
       if (!info) continue;
@@ -1247,58 +1289,343 @@ async function renderTravelTimes() {
     }
 
     // ── Home distance indicators ──────────────────────────────────────────
-    // For every event not back-to-back with a predecessor → show home → event.
-    // For every event not back-to-back with a successor   → show event → home.
-    const home = showHomeTravel ? getHomeForDay(day) : null;
-    if (!home || dayEvents.length === 0) continue;
+    // homeBefore: events not back-to-back with a predecessor → show home → event.
+    // homeAfter:  events not back-to-back with a successor   → show event → home.
+    if (!home) continue;
 
-    for (const evt of dayEvents) {
+    for (const evt of homeBefore) {
       if (signal.aborted) return;
-
-      const isFlightArrival  = evt.id.startsWith('__flight_') && !evt._isDep;
-      const isFlightDeparture = evt._isDep === true;
-
-      // Does any other event end within 30 min before this one starts?
-      const hasPred = dayEvents.some(o =>
-        o.id !== evt.id && (evt.hour - (o.hour + (o.duration ?? 1))) <= 0.5 && o.hour <= evt.hour
-      );
-      // Does any other event start within 30 min after this one ends?
-      const hasSucc = dayEvents.some(o =>
-        o.id !== evt.id && (o.hour - (evt.hour + (evt.duration ?? 1))) <= 0.5 && o.hour >= evt.hour
-      );
-
-      // Inbound arrivals: skip "🏠 →" (you just landed, you're not leaving from home)
-      // Outbound departures: skip "→ 🏠" (you're leaving the city, not going back home)
-      if (!hasPred && !isFlightArrival) {
-        const info = await getDrivingInfo(home, evt.location, signal);
-        if (info && !signal.aborted) {
-          const { driveMin, walkMin } = info;
-          if (walkMin >= 1) {
-            const label = walkMin <= 25
-              ? `🏠 → 🚶 ${walkMin}m · 🚗 ${driveMin}m`
-              : `🏠 → 🚗 ${driveMin}m`;
-            makeHomeTravelIndicator(col, `home-to-${evt.id}`, evt.hour - START_HOUR, label, walkMin > 10, evt.id);
-          }
-        }
-      }
-
-      if (!hasSucc && !isFlightDeparture) {
-        if (signal.aborted) return;
-        const info = await getDrivingInfo(evt.location, home, signal);
-        if (info && !signal.aborted) {
-          const { driveMin, walkMin } = info;
-          if (walkMin >= 1) {
-            const label = walkMin <= 25
-              ? `🚶 ${walkMin}m · 🚗 ${driveMin}m → 🏠`
-              : `🚗 ${driveMin}m → 🏠`;
-            // Use ?? 1 (not || 1) so duration=0 for flight arrivals places the
-            // indicator right at arrival time, not 1 hour later.
-            const endOffset = evt.hour + (evt.duration ?? 1) - START_HOUR;
-            makeHomeTravelIndicator(col, `home-from-${evt.id}`, endOffset, label, walkMin > 10, evt.id);
-          }
+      const info = await getDrivingInfo(home, evt.location, signal);
+      if (info && !signal.aborted) {
+        const { driveMin, walkMin } = info;
+        if (walkMin >= 1) {
+          const label = walkMin <= 25
+            ? `🏠 → 🚶 ${walkMin}m · 🚗 ${driveMin}m`
+            : `🏠 → 🚗 ${driveMin}m`;
+          makeHomeTravelIndicator(col, `home-to-${evt.id}`, evt.hour - START_HOUR, label, walkMin > 10, evt.id);
         }
       }
     }
+
+    for (const evt of homeAfter) {
+      if (signal.aborted) return;
+      const info = await getDrivingInfo(evt.location, home, signal);
+      if (info && !signal.aborted) {
+        const { driveMin, walkMin } = info;
+        if (walkMin >= 1) {
+          const label = walkMin <= 25
+            ? `🚶 ${walkMin}m · 🚗 ${driveMin}m → 🏠`
+            : `🚗 ${driveMin}m → 🏠`;
+          // Use ?? 1 (not || 1) so duration=0 for flight arrivals places the
+          // indicator right at arrival time, not 1 hour later.
+          const endOffset = evt.hour + (evt.duration ?? 1) - START_HOUR;
+          makeHomeTravelIndicator(col, `home-from-${evt.id}`, endOffset, label, walkMin > 10, evt.id);
+        }
+      }
+    }
+  }
+}
+
+// ── Mobile agenda view ───────────────────────────────────────────────────────
+// Desktop keeps the calendar grid; phones get a day-at-a-time list instead —
+// drag/resize don't work on touch, and a 24-hour grid doesn't fit a narrow screen.
+
+function switchAgendaDay(d) {
+  agendaDay = d;
+  renderAgenda();
+  renderAgendaTravelTimes();
+}
+
+// Swipe left/right anywhere in the agenda list to change days (no drag on mobile).
+function attachAgendaSwipe(el) {
+  let startX = null, startY = null;
+  el.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+  }, { passive: true });
+  el.addEventListener('touchend', e => {
+    if (startX == null) return;
+    const dx = (e.changedTouches[0]?.clientX ?? startX) - startX;
+    const dy = (e.changedTouches[0]?.clientY ?? startY) - startY;
+    startX = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return; // not a horizontal swipe
+    const n = getDayCount();
+    if (dx < 0 && agendaDay < n) switchAgendaDay(agendaDay + 1);
+    else if (dx > 0 && agendaDay > 1) switchAgendaDay(agendaDay - 1);
+  }, { passive: true });
+}
+
+function makeAgendaGrayRow(text) {
+  const row = document.createElement('div');
+  row.className = 'agenda-gray-row';
+  row.textContent = text;
+  return row;
+}
+
+function makeAgendaEmptyRow() {
+  const row = document.createElement('div');
+  row.className = 'agenda-empty-row';
+  row.textContent = 'Nothing scheduled — tap ＋ to add something.';
+  return row;
+}
+
+function makeAgendaEventRow(evt) {
+  const el = document.createElement('div');
+  el.className = 'agenda-row';
+  el.dataset.travelId = evt.id;
+  if (!eventMatchesView(evt)) el.classList.add('filtered-out');
+
+  const time = document.createElement('div');
+  time.className = 'agenda-row-time';
+  time.textContent = `${formatHour(evt.hour)}–${formatHour(evt.hour + (evt.duration || 1))}`;
+  el.appendChild(time);
+
+  const body = document.createElement('div');
+  body.className = 'agenda-row-body';
+
+  const titleRow = document.createElement('div');
+  titleRow.className = 'agenda-row-title';
+  const dot = document.createElement('span');
+  dot.className = `chip-dot cat-dot-${evt.category}`;
+  titleRow.appendChild(dot);
+  const titleText = document.createElement('span');
+  titleText.textContent = evt.title;
+  titleRow.appendChild(titleText);
+  body.appendChild(titleRow);
+
+  const meta = document.createElement('div');
+  meta.className = 'agenda-row-meta';
+  if (evt.people && evt.people.length) {
+    const ppl = document.createElement('div');
+    ppl.className = 'event-people-initials';
+    evt.people.forEach(p => {
+      const init = document.createElement('div');
+      init.className = 'person-initial';
+      init.style.background = getPersonColor(p);
+      init.textContent = getPersonName(p)[0].toUpperCase();
+      init.title = getPersonName(p);
+      ppl.appendChild(init);
+    });
+    meta.appendChild(ppl);
+  }
+  if (evt.hasReservation) {
+    const res = document.createElement('span');
+    res.className = 'event-has-res';
+    res.textContent = 'RES';
+    meta.appendChild(res);
+  }
+  if (evt.location?.lat != null) {
+    const pin = document.createElement('span');
+    pin.style.cssText = 'font-size:11px;opacity:0.6;';
+    pin.textContent = '📍';
+    meta.appendChild(pin);
+  }
+  if (evt.placeInfo?.hours?.periods?.length && evt.day != null && state.startDate) {
+    const base = parseLocalDate(state.startDate);
+    base.setDate(base.getDate() + evt.day - 1);
+    const status = hoursStatusAt(evt.placeInfo.hours.periods, base.getDay(), evt.hour);
+    if (!status.open) {
+      const badge = document.createElement('span');
+      badge.className = 'evt-closed-badge';
+      badge.textContent = status.closedToday ? 'Closed today' : 'Closed';
+      meta.appendChild(badge);
+    }
+  }
+  if (meta.children.length) body.appendChild(meta);
+
+  el.appendChild(body);
+  el.addEventListener('click', () => openModal(evt.id));
+  return el;
+}
+
+function makeAgendaFlightRow(f, info) {
+  const el = document.createElement('div');
+  el.className = 'agenda-row agenda-row-flight';
+  el.dataset.travelId = isTripDeparture(f) ? `__flight_dep_${f.id}` : `__flight_${f.id}`;
+
+  const time = document.createElement('div');
+  time.className = 'agenda-row-time';
+  time.textContent = `${formatHour(info.cardStart)}–${formatHour(info.cardEnd)}`;
+  el.appendChild(time);
+
+  const body = document.createElement('div');
+  body.className = 'agenda-row-body';
+
+  let titleText = `✈ ${f.number}`;
+  if (info.clampedStart && f.departure?.iata) {
+    const depDate = getDayDate(isoToTripDayUnclamped(f.depIso));
+    const depDateStr = depDate ? depDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+    titleText += ` · from ${f.departure.iata}${depDateStr ? ' ' + depDateStr : ''}`;
+  }
+  const titleRow = document.createElement('div');
+  titleRow.className = 'agenda-row-title';
+  titleRow.textContent = titleText;
+  body.appendChild(titleRow);
+
+  const meta = document.createElement('div');
+  meta.className = 'agenda-row-meta';
+  meta.textContent = `${f.departure.iata} → ${f.arrival.iata}`;
+  body.appendChild(meta);
+
+  el.appendChild(body);
+  el.addEventListener('click', () => openFlightModal(f.id));
+  return el;
+}
+
+function makeAgendaUntimedChip(evt) {
+  const chip = document.createElement('div');
+  chip.className = `event-chip${eventMatchesView(evt) ? '' : ' dimmed'}`;
+  const dot = document.createElement('span');
+  dot.className = `chip-dot cat-dot-${evt.category}`;
+  chip.appendChild(dot);
+  chip.appendChild(document.createTextNode(evt.title));
+  chip.addEventListener('click', () => openModal(evt.id));
+  return chip;
+}
+
+function renderAgenda() {
+  agendaView.innerHTML = '';
+  const n = getDayCount();
+  if (n === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'agenda-empty-row';
+    empty.textContent = 'Set a date range above to get started.';
+    agendaView.appendChild(empty);
+    return;
+  }
+
+  // ── Day switcher ──
+  const switcher = document.createElement('div');
+  switcher.className = 'agenda-day-switcher';
+  for (let d = 1; d <= n; d++) {
+    const lbl = getDayLabel(d);
+    const btn = document.createElement('button');
+    btn.className = `map-day-btn${agendaDay === d ? ' active' : ''}`;
+    btn.textContent = `${lbl.dow} ${lbl.date}`;
+    btn.addEventListener('click', () => switchAgendaDay(d));
+    switcher.appendChild(btn);
+  }
+  agendaView.appendChild(switcher);
+
+  const scroll = document.createElement('div');
+  scroll.className = 'agenda-scroll';
+  attachAgendaSwipe(scroll);
+  agendaView.appendChild(scroll);
+
+  const list = document.createElement('div');
+  list.className = 'agenda-list';
+  scroll.appendChild(list);
+
+  const timedEvents = state.events.filter(e => e.day === agendaDay && e.hour != null);
+  const flights = (state.flights || [])
+    .filter(f => flightMatchesView(f))
+    .map(f => ({ f, info: flightRenderInfo(f) }))
+    .filter(x => x.info && x.info.day === agendaDay);
+
+  // Leading grayout — inbound flights not yet landed cover 0..arrival
+  flights
+    .filter(x => !isTripDeparture(x.f))
+    .forEach(() => list.appendChild(makeAgendaGrayRow(`Not in ${tripLabel()} yet`)));
+
+  const rows = [
+    ...timedEvents.map(evt => ({ type: 'event', evt, hour: evt.hour })),
+    ...flights.map(({ f, info }) => ({ type: 'flight', f, info, hour: info.cardStart })),
+  ].sort((a, b) => a.hour - b.hour);
+
+  if (rows.length === 0 && flights.length === 0) list.appendChild(makeAgendaEmptyRow());
+
+  rows.forEach(row => {
+    list.appendChild(row.type === 'flight' ? makeAgendaFlightRow(row.f, row.info) : makeAgendaEventRow(row.evt));
+  });
+
+  // Trailing grayout — outbound flights already gone cover departure..end of day
+  flights
+    .filter(x => isTripDeparture(x.f))
+    .forEach(() => list.appendChild(makeAgendaGrayRow(`Left ${tripLabel()}`)));
+
+  // ── Untimed "sometime today" section ──
+  const untimed = state.events.filter(e => e.day === agendaDay && e.hour == null);
+  if (untimed.length) {
+    const header = document.createElement('div');
+    header.className = 'agenda-section-header';
+    header.textContent = 'Sometime today';
+    list.appendChild(header);
+    const pool = document.createElement('div');
+    pool.className = 'agenda-untimed-pool';
+    untimed.forEach(evt => pool.appendChild(makeAgendaUntimedChip(evt)));
+    list.appendChild(pool);
+  }
+
+  // ── Add-event FAB ──
+  const fab = document.createElement('button');
+  fab.className = 'agenda-fab';
+  fab.textContent = '＋';
+  fab.title = 'Add event';
+  fab.addEventListener('click', () => openModal(null, { day: agendaDay }));
+  agendaView.appendChild(fab);
+}
+
+let _agendaTravelAbort = null;
+
+// Fetch driving-time labels for the day's travel pills and splice them into the
+// already-rendered row list. Split from renderAgenda() so day switches paint
+// immediately and pills fill in as they resolve, same as the desktop grid.
+async function renderAgendaTravelTimes() {
+  if (_agendaTravelAbort) _agendaTravelAbort.abort();
+  _agendaTravelAbort = new AbortController();
+  const signal = _agendaTravelAbort.signal;
+  const day = agendaDay;
+
+  await prefetchAllRouteKeys(signal);
+  if (signal.aborted || day !== agendaDay) return;
+
+  const list = agendaView.querySelector('.agenda-list');
+  if (!list) return;
+
+  const dayEvents = dayTravelItems(day);
+  const home = showHomeTravel ? getHomeForDay(day) : null;
+  const { pairs, homeBefore, homeAfter } = computeTravelPairs(dayEvents, home);
+
+  const makePillEl = (info, extraClass, label) => {
+    const isWarn = info.walkMin > 10;
+    const row = document.createElement('div');
+    row.className = `agenda-travel-pill${extraClass ? ' ' + extraClass : ''}`;
+    const badge = document.createElement('span');
+    badge.className = `travel-badge${extraClass ? ' travel-badge-home' : ''}${isWarn ? ' travel-badge-warn' : ''}`;
+    badge.innerHTML = label;
+    row.appendChild(badge);
+    return row;
+  };
+
+  for (const { a, b } of pairs) {
+    if (signal.aborted || day !== agendaDay) return;
+    const info = await getDrivingInfo(a.location, b.location, signal);
+    if (!info || info.walkMin < 1) continue;
+    const rowA = list.querySelector(`[data-travel-id="${a.id}"]`);
+    if (!rowA) continue;
+    const label = info.walkMin <= 25 ? `🚶 ${info.walkMin}m · 🚗 ${info.driveMin}m` : `🚗 ${info.driveMin}m`;
+    rowA.insertAdjacentElement('afterend', makePillEl(info, '', label));
+  }
+
+  for (const evt of homeBefore) {
+    if (signal.aborted || day !== agendaDay) return;
+    const info = await getDrivingInfo(home, evt.location, signal);
+    if (!info || info.walkMin < 1) continue;
+    const row = list.querySelector(`[data-travel-id="${evt.id}"]`);
+    if (!row) continue;
+    const label = info.walkMin <= 25 ? `🏠 → 🚶 ${info.walkMin}m · 🚗 ${info.driveMin}m` : `🏠 → 🚗 ${info.driveMin}m`;
+    row.insertAdjacentElement('beforebegin', makePillEl(info, 'agenda-travel-pill-home', label));
+  }
+
+  for (const evt of homeAfter) {
+    if (signal.aborted || day !== agendaDay) return;
+    const info = await getDrivingInfo(evt.location, home, signal);
+    if (!info || info.walkMin < 1) continue;
+    const row = list.querySelector(`[data-travel-id="${evt.id}"]`);
+    if (!row) continue;
+    const label = info.walkMin <= 25 ? `🚶 ${info.walkMin}m · 🚗 ${info.driveMin}m → 🏠` : `🚗 ${info.driveMin}m → 🏠`;
+    row.insertAdjacentElement('afterend', makePillEl(info, 'agenda-travel-pill-home', label));
   }
 }
 
@@ -1377,8 +1704,17 @@ tabBtns.forEach(btn => {
     if (activeTab === 'map') {
       // Leaflet needs the container visible before init
       setTimeout(() => { initMap(); renderMapDayStrip(); renderMap(); }, 50);
+    } else if (isMobile()) {
+      calContainer.classList.add('hidden');
+      agendaView.classList.remove('hidden');
+      const n = getDayCount();
+      if (agendaDay == null || agendaDay < 1 || agendaDay > n) agendaDay = defaultAgendaDay();
+      renderAgenda();
+      renderAgendaTravelTimes();
     } else {
       // Recalculate layout after returning to calendar
+      calContainer.classList.remove('hidden');
+      agendaView.classList.add('hidden');
       updateHourHeight();
       repositionAllCards();
       scrollToHour(17);
@@ -2009,6 +2345,12 @@ window.addEventListener('resize', () => {
   repositionAllCards();
   updateColumnWidths();
   if (leafletMap) leafletMap.invalidateSize();
+});
+
+// Switch between the desktop grid and the mobile agenda when crossing the breakpoint
+// (e.g. rotating a tablet, or resizing a desktop window past 640px).
+mobileMQ.addEventListener('change', () => {
+  if (activeTab === 'calendar') render();
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

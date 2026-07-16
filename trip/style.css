@@ -1308,7 +1308,7 @@ body.is-dragging .travel-indicator {
   #sync-status   { display: none; }
   #btn-logout    { order: 5; padding: 4px 6px; font-size: 12px; }
   #btn-theme     { order: 6; width: 28px; height: 28px; font-size: 13px; }
-  #btn-add-flight { display: none; } /* access via desktop */
+  #btn-add-flight { order: 7; padding: 4px 8px; font-size: 12px; } /* flights are first-class on mobile now */
 
   /* Filter bar: always-scrollable row so zoom slider is reachable */
   #filter-bar {
@@ -1325,11 +1325,6 @@ body.is-dragging .travel-indicator {
   .cal-zoom-control { display: flex; }
   #cal-zoom { width: 70px; }
   #map-legend { gap: 8px; }
-
-  /* Calendar: each day column fills viewport so you scroll right to see next day */
-  .day-col {
-    min-width: calc(100vw - var(--gutter-w) - 2px);
-  }
 
   /* Override the JS-managed overflow-y so vertical scroll always works on mobile.
      !important wins over the inline style set by updateHourHeight(). */
@@ -1359,9 +1354,6 @@ body.is-dragging .travel-indicator {
   .form-row { flex-direction: column; gap: 10px; }
   .fg-1, .fg-2 { flex: unset; }
 
-  /* Hide travel markers adjacent to compact (30-min) events — too cramped */
-  .travel-indicator[data-compact="1"] { display: none; }
-
   /* Bigger tap targets for event cards */
   .event-edit-btn { width: 26px; height: 26px; font-size: 13px; }
 
@@ -1372,4 +1364,160 @@ body.is-dragging .travel-indicator {
     flex-wrap: nowrap;
   }
   #map-day-strip::-webkit-scrollbar { display: none; }
+
+  /* ── Agenda view ── */
+  #agenda-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    position: relative;
+  }
+
+  .agenda-day-switcher {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 7px 14px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    flex-shrink: 0;
+  }
+  .agenda-day-switcher::-webkit-scrollbar { display: none; }
+
+  .agenda-scroll {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .agenda-list {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 12px 90px; /* bottom padding clears the FAB */
+    gap: 6px;
+  }
+
+  .agenda-gray-row {
+    padding: 8px 10px;
+    border-radius: 7px;
+    background: repeating-linear-gradient(
+      -45deg,
+      transparent, transparent 6px,
+      rgba(128,128,128,0.07) 6px, rgba(128,128,128,0.07) 12px
+    );
+    border: 1px dashed var(--border);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    opacity: 0.7;
+    text-align: center;
+  }
+
+  .agenda-empty-row {
+    padding: 24px 12px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .agenda-row {
+    display: flex;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .agenda-row:active { border-color: var(--accent); }
+  .agenda-row.filtered-out { opacity: 0.35; }
+
+  .agenda-row-flight {
+    background: repeating-linear-gradient(
+      -45deg,
+      var(--surface2), var(--surface2) 5px,
+      color-mix(in srgb, var(--surface2) 80%, var(--accent) 20%) 5px,
+      color-mix(in srgb, var(--surface2) 80%, var(--accent) 20%) 10px
+    );
+    border-left: 3px solid var(--accent);
+  }
+
+  .agenda-row-time {
+    flex-shrink: 0;
+    width: 68px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    line-height: 1.4;
+  }
+
+  .agenda-row-body { flex: 1; min-width: 0; }
+
+  .agenda-row-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .agenda-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+    flex-wrap: wrap;
+  }
+
+  .agenda-travel-pill {
+    display: flex;
+    justify-content: center;
+    padding: 2px 0;
+  }
+  .agenda-travel-pill .travel-badge { position: static; }
+
+  .agenda-section-header {
+    margin-top: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .agenda-untimed-pool {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .agenda-fab {
+    position: absolute;
+    right: 16px;
+    bottom: 20px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    font-size: 24px;
+    line-height: 1;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .agenda-fab:active { background: var(--accent-h); }
 }
