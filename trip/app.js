@@ -952,8 +952,8 @@ function makeEventCard(evt) {
 
 function renderUnscheduled() {
   pool.innerHTML = '';
-  // "Unscheduled" = no time set (may or may not have a day)
-  const unscheduled = state.events.filter(e => e.hour == null);
+  // "Unscheduled" = missing a day, a time, or both — it needs both to land on the calendar.
+  const unscheduled = state.events.filter(e => e.day == null || e.hour == null);
   usCount.textContent = unscheduled.length;
 
   if (unscheduled.length === 0) {
@@ -975,12 +975,19 @@ function renderUnscheduled() {
     chip.appendChild(dot);
     chip.appendChild(document.createTextNode(evt.title));
 
-    // If a day is assigned but no time, show a small day tag
+    // Tag whichever half (day, time) is already set — an unscheduled chip is
+    // always missing at least one of the two, so these never both show.
     if (evt.day != null) {
       const lbl = getDayLabel(evt.day);
       const tag = document.createElement('span');
       tag.style.cssText = 'margin-left:5px;font-size:10px;opacity:0.55;';
       tag.textContent   = `${lbl.dow} ${lbl.date}`;
+      chip.appendChild(tag);
+    }
+    if (evt.hour != null) {
+      const tag = document.createElement('span');
+      tag.style.cssText = 'margin-left:5px;font-size:10px;opacity:0.55;';
+      tag.textContent   = formatHour(evt.hour);
       chip.appendChild(tag);
     }
 
