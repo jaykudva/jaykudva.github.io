@@ -42,6 +42,23 @@ function migrateState() {
     if (f.arrHourCDMX != null) { f.arrHourTrip = f.arrHourCDMX; delete f.arrHourCDMX; }
   }
 
+  // Legacy flights stored a single fractional hour per leg (no explicit date/tz
+  // pairing) — synthesize full ISO datetimes from f.date + the trip timezone so
+  // flightRenderInfo() has a single source of truth to work from. An arrival
+  // hour earlier than the departure hour implies an overnight leg.
+  for (const f of state.flights) {
+    if (f.depIso == null && f.depHourTrip != null && f.date) {
+      f.depIso = buildIsoInTz(f.date, hourToTimeStr(f.depHourTrip), tripTz());
+    }
+    if (f.arrIso == null && f.arrHourTrip != null && f.date) {
+      const overnight = f.depHourTrip != null && f.arrHourTrip < f.depHourTrip;
+      const arrDate   = overnight ? addDaysToDateStr(f.date, 1) : f.date;
+      f.arrIso = buildIsoInTz(arrDate, hourToTimeStr(f.arrHourTrip), tripTz());
+    }
+    delete f.depHourTrip;
+    delete f.arrHourTrip;
+  }
+
   // If no people defined yet but events/flights reference old hardcoded IDs, auto-migrate.
   if (state.people.length === 0) {
     const allIds = new Set([
@@ -275,6 +292,13 @@ function parseLocalDate(str) {
   return new Date(y, m - 1, d);
 }
 
+// Return "YYYY-MM-DD" n days after the given date string.
+function addDaysToDateStr(str, n) {
+  const d = parseLocalDate(str);
+  d.setDate(d.getDate() + n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function getDayCount() {
   if (!state.startDate || !state.endDate) return 0;
   const diff = Math.round((parseLocalDate(state.endDate) - parseLocalDate(state.startDate)) / 86400000) + 1;
@@ -347,22 +371,20 @@ function toTripDateStr(isoStr) {
 }
 
 // Return trip day number (1-based) for an ISO datetime interpreted in trip time, or null
+// if it falls outside the trip's date range.
 function isoToTripDay(isoStr) {
+  const diff = isoToTripDayUnclamped(isoStr);
+  return diff != null && diff >= 1 && diff <= getDayCount() ? diff : null;
+}
+
+// Same as isoToTripDay but returns the day number even when it's outside the
+// trip's range (e.g. a flight that departed the day before the trip starts).
+function isoToTripDayUnclamped(isoStr) {
   const dateStr = toTripDateStr(isoStr);
   if (!dateStr || !state.startDate) return null;
   const start = parseLocalDate(state.startDate);
   const target = parseLocalDate(dateStr);
-  const diff = Math.round((target - start) / 86400000) + 1;
-  return diff >= 1 && diff <= getDayCount() ? diff : null;
-}
-
-// Return trip day number for a flight object using its stored date string
-function flightDay(f) {
-  if (!f.date || !state.startDate) return null;
-  const start = parseLocalDate(state.startDate);
-  const target = parseLocalDate(f.date);
-  const diff = Math.round((target - start) / 86400000) + 1;
-  return diff >= 1 && diff <= getDayCount() ? diff : null;
+  return Math.round((target - start) / 86400000) + 1;
 }
 
 // Does this flight match the current view filter?
@@ -377,6 +399,61 @@ function flightMatchesView(flight) {
 function isTripDeparture(f) {
   if (f.direction) return f.direction === 'outbound';
   return f.departure?.tz === tripTz();
+}
+
+// Compute the visible (in-range) rendering segment for a flight, or null if none
+// of it falls within the trip's date range. Inbound flights anchor on arrival
+// (you're "not here yet" before landing); outbound flights anchor on departure
+// (you're "gone" after leaving). Overnight legs get clamped to the visible day,
+// with clampedStart/clampedEnd marking that the other end continues off-screen.
+function flightRenderInfo(f) {
+  if (!f.depIso || !f.arrIso) return null;
+  const depHour = toTripHour(f.depIso);
+  const arrHour = toTripHour(f.arrIso);
+  const depDay  = isoToTripDayUnclamped(f.depIso);
+  const arrDay  = isoToTripDayUnclamped(f.arrIso);
+  if (depHour == null || arrHour == null || depDay == null || arrDay == null) return null;
+
+  const n = getDayCount();
+
+  if (isTripDeparture(f)) {
+    if (depDay < 1 || depDay > n) return null;
+    const clampedEnd = arrDay !== depDay;
+    return {
+      day: depDay,
+      grayFrom: depHour, grayTo: 24,
+      cardStart: depHour, cardEnd: clampedEnd ? 24 : arrHour,
+      clampedStart: false, clampedEnd,
+    };
+  } else {
+    if (arrDay < 1 || arrDay > n) return null;
+    const clampedStart = depDay !== arrDay;
+    return {
+      day: arrDay,
+      grayFrom: 0, grayTo: arrHour,
+      cardStart: clampedStart ? 0 : depHour, cardEnd: arrHour,
+      clampedStart, clampedEnd: false,
+    };
+  }
+}
+
+// Flight legs as virtual point-events for a given trip day, used by travel-time
+// gap detection and home-distance indicators. Hour = the moment you're at that
+// airport within the visible segment (arrival for inbound, departure for outbound).
+function flightVirtualEventsForDay(day) {
+  return (state.flights || [])
+    .filter(f => flightMatchesView(f))
+    .flatMap(f => {
+      const info = flightRenderInfo(f);
+      if (!info || info.day !== day) return [];
+      if (isTripDeparture(f)) {
+        if (f.departure?.lat == null) return [];
+        return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: info.cardStart, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
+      } else {
+        if (f.arrival?.lat == null) return [];
+        return [{ id: `__flight_${f.id}`, _isDep: false, hour: info.cardEnd, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
+      }
+    });
 }
 
 // ── View filter helpers ───────────────────────────────────────────────────────
@@ -564,55 +641,43 @@ function makeDayCol(day) {
     col.appendChild(card);
   });
 
-  // Place flight blocks for this day
+  // Place flight blocks for this day — only the segment that falls in range renders.
   (state.flights || []).forEach(f => {
     if (!flightMatchesView(f)) return;
-    const arrDay = flightDay(f);
-    if (arrDay !== day) return;
+    const info = flightRenderInfo(f);
+    if (!info || info.day !== day) return;
 
-    const depHour       = f.depHourTrip;
-    const arrHour       = f.arrHourTrip;
-    if (depHour == null || arrHour == null) return;
-
-    if (isTripDeparture(f)) {
-      // Block out everything AFTER departure — they've left
-      const greyStart = depHour - START_HOUR;
-      const greyHours = N_HOURS - greyStart;
-      if (greyHours > 0) {
-        const grayout = document.createElement('div');
-        grayout.className = 'flight-grayout';
-        grayout.style.top    = `calc(var(--day-header-h) + ${greyStart} * var(--hour-height))`;
-        grayout.style.height = `calc(${greyHours} * var(--hour-height))`;
-        const lbl = document.createElement('div');
-        lbl.className = 'flight-grayout-label';
-        lbl.textContent = `Left ${tripLabel()}`;
-        grayout.appendChild(lbl);
-        col.appendChild(grayout);
-      }
-    } else {
-      // Block out everything BEFORE arrival — not at the destination yet
-      const greyHours = depHour - START_HOUR;
-      if (greyHours > 0) {
-        const grayout = document.createElement('div');
-        grayout.className = 'flight-grayout';
-        grayout.style.height = `calc(${greyHours} * var(--hour-height))`;
-        const lbl = document.createElement('div');
-        lbl.className = 'flight-grayout-label';
-        lbl.textContent = `Not in ${tripLabel()} yet`;
-        grayout.appendChild(lbl);
-        col.appendChild(grayout);
-      }
+    if (info.grayTo > info.grayFrom) {
+      const grayout = document.createElement('div');
+      grayout.className = 'flight-grayout';
+      grayout.style.top    = `calc(var(--day-header-h) + ${info.grayFrom - START_HOUR} * var(--hour-height))`;
+      grayout.style.height = `calc(${info.grayTo - info.grayFrom} * var(--hour-height))`;
+      const lbl = document.createElement('div');
+      lbl.className = 'flight-grayout-label';
+      lbl.textContent = isTripDeparture(f) ? `Left ${tripLabel()}` : `Not in ${tripLabel()} yet`;
+      grayout.appendChild(lbl);
+      col.appendChild(grayout);
     }
 
-    // Flight card — spans dep→arr regardless of direction
-    const dur = Math.max(0.5, arrHour - depHour);
+    // Flight card — clamped to the visible portion of the leg on this day
+    const dur = Math.max(0.5, info.cardEnd - info.cardStart);
     const fcard = document.createElement('div');
     fcard.className = 'event-card flight-card';
     fcard.dataset.flightId = f.id;
-    fcard.style.top    = `calc(var(--day-header-h) + ${depHour - START_HOUR} * var(--hour-height))`;
+    fcard.style.top    = `calc(var(--day-header-h) + ${info.cardStart - START_HOUR} * var(--hour-height))`;
     fcard.style.height = `calc(${dur} * var(--hour-height) - 4px)`;
+
+    // Overnight arrivals: the departure happened on a previous (possibly out-of-
+    // range) day, so surface where/when it left from since the card alone can't show it.
+    let titleText = `✈ ${f.number}`;
+    if (info.clampedStart && f.departure?.iata) {
+      const depDate = getDayDate(isoToTripDayUnclamped(f.depIso));
+      const depDateStr = depDate ? depDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+      titleText += ` · from ${f.departure.iata}${depDateStr ? ' ' + depDateStr : ''}`;
+    }
+
     fcard.innerHTML = `
-      <div class="event-card-title">✈ ${f.number}</div>
+      <div class="event-card-title">${escHtml(titleText)}</div>
       <div class="event-card-meta">
         <span class="event-time-label">${f.departure.iata} → ${f.arrival.iata}</span>
       </div>
@@ -1076,21 +1141,9 @@ async function renderTravelTimes() {
 
     for (let day = 1; day <= n; day++) {
       const home = showHomeTravel ? getHomeForDay(day) : null;
-      const flightVirtualEvents = (state.flights || [])
-        .filter(f => flightDay(f) === day && flightMatchesView(f))
-        .flatMap(f => {
-          if (isTripDeparture(f)) {
-            if (f.departure?.lat == null || f.depHourTrip == null) return [];
-            return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: f.depHourTrip, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
-          } else {
-            if (f.arrival?.lat == null || f.arrHourTrip == null) return [];
-            return [{ id: `__flight_${f.id}`, _isDep: false, hour: f.arrHourTrip, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
-          }
-        });
-
       const dayEvents = [
         ...state.events.filter(e => e.day === day && e.hour != null && e.location?.lat != null),
-        ...flightVirtualEvents,
+        ...flightVirtualEventsForDay(day),
       ].sort((a, b) => a.hour - b.hour);
 
       for (let i = 0; i < dayEvents.length - 1; i++) {
@@ -1148,21 +1201,9 @@ async function renderTravelTimes() {
     // Inject flight virtual events for home-travel distance calculation.
     // Arrival flights  → virtual event at arrival airport (→ show airport→home pill).
     // Departure flights → virtual event at departure airport (→ show home→airport pill).
-    const flightVirtualEvents = (state.flights || [])
-      .filter(f => flightDay(f) === day && flightMatchesView(f))
-      .flatMap(f => {
-        if (isTripDeparture(f)) {
-          if (f.departure?.lat == null || f.depHourTrip == null) return [];
-          return [{ id: `__flight_dep_${f.id}`, _isDep: true, hour: f.depHourTrip, duration: 0, location: { lat: f.departure.lat, lng: f.departure.lng } }];
-        } else {
-          if (f.arrival?.lat == null || f.arrHourTrip == null) return [];
-          return [{ id: `__flight_${f.id}`, _isDep: false, hour: f.arrHourTrip, duration: 0, location: { lat: f.arrival.lat, lng: f.arrival.lng } }];
-        }
-      });
-
     const dayEvents = [
       ...state.events.filter(e => e.day === day && e.hour != null && e.location?.lat != null),
-      ...flightVirtualEvents,
+      ...flightVirtualEventsForDay(day),
     ].sort((a, b) => a.hour - b.hour);
 
     for (let i = 0; i < dayEvents.length - 1; i++) {
@@ -1474,7 +1515,7 @@ function renderMap() {
   // ── Flight airport markers ──────────────────────────────────────────────────
   (state.flights || []).forEach(f => {
     if (!flightMatchesView(f)) return;
-    const fDay = flightDay(f);
+    const fDay = flightRenderInfo(f)?.day ?? null;
     if (mapDayFilter !== null && fDay !== mapDayFilter) return;
 
     const departing = isTripDeparture(f);
@@ -2307,6 +2348,7 @@ peopleModalOverlay.addEventListener('click', e => {
 
 const flightModalOverlay = document.getElementById('flight-modal-overlay');
 const flightModalTitle   = document.getElementById('flight-modal-title');
+const fltExistingList    = document.getElementById('flt-existing-list');
 const fltNumber          = document.getElementById('flt-number');
 const fltDate            = document.getElementById('flt-date');
 const fltLookup          = document.getElementById('flt-lookup');
@@ -2319,6 +2361,36 @@ const fltSave            = document.getElementById('flt-save');
 let fltSelectedResult = null;  // the flight object chosen from lookup results
 let fltEditingId      = null;  // id of flight being edited (null = new)
 
+// Flights that render nowhere on the calendar (fully outside the trip range)
+// are otherwise unreachable — cards are the only edit entry point. Surface a
+// compact list at the top of the Add Flight modal so they stay editable.
+function renderExistingFlightsList() {
+  const flights = state.flights || [];
+  fltExistingList.innerHTML = '';
+  if (!flights.length) { fltExistingList.classList.add('hidden'); return; }
+  fltExistingList.classList.remove('hidden');
+
+  const heading = document.createElement('div');
+  heading.className = 'flt-existing-heading';
+  heading.textContent = 'Existing flights — tap to edit';
+  fltExistingList.appendChild(heading);
+
+  [...flights].sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(f => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'flt-existing-row';
+    const peopleStr = (f.people || []).map(p => getPersonName(p)).join(', ');
+    row.innerHTML = `
+      <span class="flt-existing-num">${escHtml(f.number || '?')}</span>
+      <span class="flt-existing-route">${escHtml(f.departure?.iata || '?')} → ${escHtml(f.arrival?.iata || '?')}</span>
+      <span class="flt-existing-date">${escHtml(f.date || '')}</span>
+      ${peopleStr ? `<span class="flt-existing-people">${escHtml(peopleStr)}</span>` : ''}
+    `;
+    row.addEventListener('click', () => openFlightModal(f.id));
+    fltExistingList.appendChild(row);
+  });
+}
+
 function openFlightModal(id = null) {
   fltEditingId      = id;
   fltSelectedResult = null;
@@ -2328,6 +2400,8 @@ function openFlightModal(id = null) {
   fltSave.classList.add('hidden');
   fltDelete.classList.toggle('hidden', !id);
   flightModalTitle.textContent = id ? 'Edit Flight' : 'Add Flight';
+  fltExistingList.classList.toggle('hidden', !!id);
+  if (!id) renderExistingFlightsList();
 
   if (id) {
     const f = (state.flights || []).find(x => x.id === id);
@@ -2336,11 +2410,10 @@ function openFlightModal(id = null) {
       fltDate.value   = f.date;
       renderPeopleChips('flt-people-chips', f.people || [], 'active');
       fltSelectedResult = f;
-      // depHourTrip/arrHourTrip are already stored in trip time, so label both as trip time
-      fltDepTzEl.textContent = `(${tripLabel()} time)`;
-      fltArrTzEl.textContent = `(${tripLabel()} time)`;
-      fltDepTime.value  = f.depHourTrip != null ? hourToTimeStr(f.depHourTrip) : '';
-      fltArrTime.value  = f.arrHourTrip != null ? hourToTimeStr(f.arrHourTrip) : '';
+      fltDepTzEl.textContent = f.departure?.tz ? `(${f.departure.tz.split('/').pop().replace('_', ' ')})` : '(local)';
+      fltArrTzEl.textContent = f.arrival?.tz ? `(${f.arrival.tz.split('/').pop().replace('_', ' ')})` : '(arrival airport local time)';
+      fltDepTime.value  = f.depIso ? isoToTimeInput(f.depIso, f.departure?.tz) : '';
+      fltArrTime.value  = f.arrIso ? isoToTimeInput(f.arrIso, f.arrival?.tz)   : '';
       const departing = isTripDeparture(f);
       fltDirInbound.checked  = !departing;
       fltDirOutbound.checked = departing;
@@ -2432,11 +2505,12 @@ function selectFlightResult(f) {
   fltStatus.className   = 'location-status ok';
   fltStatus.textContent = `${f.departure.iata} → ${f.arrival.iata} · ${f.airline}`;
 
-  // Show time inputs — pre-fill from API if times are available, else leave blank
+  // Show time inputs — pre-fill from API if times are available, else leave blank.
+  // Both inputs edit round-trip through their own airport's local time.
   fltDepTzEl.textContent = f.departure.tz ? `(${f.departure.tz.split('/').pop().replace('_', ' ')})` : '(local)';
-  fltArrTzEl.textContent = `(${tripLabel()} time)`;
+  fltArrTzEl.textContent = f.arrival.tz   ? `(${f.arrival.tz.split('/').pop().replace('_', ' ')})`   : '(arrival airport local time)';
   fltDepTime.value = f.departure.time ? isoToTimeInput(f.departure.time, f.departure.tz) : '';
-  fltArrTime.value = f.arrival.time   ? isoToTimeInput(f.arrival.time,   tripTz())        : '';
+  fltArrTime.value = f.arrival.time   ? isoToTimeInput(f.arrival.time,   f.arrival.tz)   : '';
   fltTimesEl.classList.remove('hidden');
   fltSave.classList.remove('hidden');
 
@@ -2460,12 +2534,6 @@ function isoToTimeInput(isoStr, tz) {
     const m = parts.find(p => p.type === 'minute')?.value ?? '00';
     return `${h === '24' ? '00' : h}:${m}`;
   } catch { return ''; }
-}
-
-function timeInputToHour(str) {
-  if (!str) return null;
-  const [h, m] = str.split(':').map(Number);
-  return h + (m || 0) / 60;
 }
 
 function hourToTimeStr(h) {
@@ -2521,33 +2589,44 @@ function formatIsoForDisplay(isoStr, tripTimeOnly = false) {
 fltSave.addEventListener('click', () => {
   if (!fltSelectedResult) return;
 
-  const depHour = timeInputToHour(fltDepTime.value);
-  const arrHour = timeInputToHour(fltArrTime.value);
-  if (depHour == null || arrHour == null) {
+  if (!fltDepTime.value || !fltArrTime.value) {
     fltStatus.className   = 'location-status err';
     fltStatus.textContent = 'Enter departure and arrival times above.';
     return;
   }
 
-  // For departure: convert from departure airport local time to trip time
-  // We do this by constructing an ISO string with the departure timezone offset,
-  // then reading it back in trip time using Intl.
-  const depDate    = fltDate.value;
-  const depIso     = buildIsoInTz(depDate, fltDepTime.value, fltSelectedResult.departure.tz);
-  const depTripHr  = depIso ? toTripHour(depIso) : depHour; // fallback: treat as trip time directly
-  const direction  = fltDirOutbound.checked ? 'outbound' : 'inbound';
+  const depDate = fltDate.value;
+  const depIso  = buildIsoInTz(depDate, fltDepTime.value, fltSelectedResult.departure.tz);
+
+  // Arrival date can differ from departure (overnight flights). Prefer the
+  // lookup API's arrival date if we have one; otherwise assume same-day and
+  // roll forward if that would put arrival before departure.
+  let arrDate = fltSelectedResult.arrival?.time ? fltSelectedResult.arrival.time.slice(0, 10) : depDate;
+  const tentativeArrIso = buildIsoInTz(arrDate, fltArrTime.value, fltSelectedResult.arrival.tz);
+  if (depIso && tentativeArrIso && new Date(tentativeArrIso) < new Date(depIso)) {
+    arrDate = addDaysToDateStr(arrDate, 1);
+  }
+  const arrIso = buildIsoInTz(arrDate, fltArrTime.value, fltSelectedResult.arrival.tz);
+
+  if (!depIso || !arrIso) {
+    fltStatus.className   = 'location-status err';
+    fltStatus.textContent = 'Could not resolve flight times — missing timezone data.';
+    return;
+  }
+
+  const direction = fltDirOutbound.checked ? 'outbound' : 'inbound';
 
   const people = [...document.querySelectorAll('#flt-people-chips .person-chip.active')].map(c => c.dataset.person);
   if (!state.flights) state.flights = [];
 
   const entry = {
-    id:          fltEditingId || uid(),
-    date:        fltDate.value,
+    id:   fltEditingId || uid(),
+    date: fltDate.value,
     ...fltSelectedResult,
     people,          // after spread so chip selection always wins
     direction,
-    depHourTrip: depTripHr,
-    arrHourTrip: arrHour,   // arrival time input is already in trip time
+    depIso,
+    arrIso,
   };
 
   if (fltEditingId) {
