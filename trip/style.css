@@ -1044,6 +1044,8 @@ body.is-dragging .travel-indicator {
 
 .form-group input[type="text"],
 .form-group input[type="url"],
+.form-group input[type="date"],
+.form-group input[type="time"],
 .form-group select,
 .form-group textarea {
   background: var(--surface2);

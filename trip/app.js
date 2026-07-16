@@ -2104,7 +2104,7 @@ function renderPlaceInfoPanel() {
   let weekdayIdx     = null;
 
   const dayVal  = evtDay.value !== '' ? parseInt(evtDay.value, 10) : null;
-  const hourVal = evtTime.value !== '' ? parseFloat(evtTime.value) : null;
+  const hourVal = timeInputToHour(evtTime.value);
 
   if (info.hours?.weekdayText?.length && dayVal != null && state.startDate) {
     const base = parseLocalDate(state.startDate);
@@ -2191,13 +2191,6 @@ function populateDayOptions() {
   }
 }
 
-function populateTimeOptions() {
-  evtTime.innerHTML = '<option value="">— no time —</option>';
-  for (let h = START_HOUR; h < START_HOUR + N_HOURS; h += 0.5) {
-    evtTime.appendChild(new Option(formatHour(h), h));
-  }
-}
-
 function openModal(id = null, prefill = {}) {
   editingId           = id;
   currentLocationData = null;
@@ -2205,7 +2198,6 @@ function openModal(id = null, prefill = {}) {
   currentPlaceInfo    = null;
   placeInfoEl.classList.add('hidden');
   populateDayOptions();
-  populateTimeOptions();
   locStatus.textContent = '';
   locStatus.className   = 'location-status';
 
@@ -2215,7 +2207,7 @@ function openModal(id = null, prefill = {}) {
     evtTitle.value         = evt.title || '';
     evtCategory.value      = evt.category || 'food';
     evtDay.value           = evt.day != null ? evt.day : '';
-    evtTime.value          = evt.hour != null ? evt.hour : '';
+    evtTime.value          = evt.hour != null ? hourToTimeStr(evt.hour) : '';
     evtDuration.value      = evt.duration || 1;
     // Prefer showing the Maps URL (most informative); fall back to saved address
     evtPlace.value         = evt.link || evt.location?.address || '';
@@ -2238,14 +2230,14 @@ function openModal(id = null, prefill = {}) {
     evtTitle.value         = '';
     evtCategory.value      = 'food';
     evtDay.value           = prefill.day != null ? prefill.day : '';
-    evtTime.value          = prefill.hour != null ? prefill.hour : '';
+    evtTime.value          = prefill.hour != null ? hourToTimeStr(prefill.hour) : '';
     evtDuration.value      = 1;
     evtPlace.value         = '';
     evtNotes.value         = '';
     evtRes.value           = '';
     resNo.checked          = true;
     resGroup.classList.add('hidden');
-    renderPeopleChips('people-chips', []);
+    renderPeopleChips('people-chips', (state.people || []).map(p => p.id));
     modalDelete.classList.add('hidden');
   }
 
@@ -2274,7 +2266,7 @@ modalSave.addEventListener('click', () => {
 
   const people  = [...document.querySelectorAll('#people-chips .person-chip.selected')].map(c => c.dataset.person);
   const dayVal  = evtDay.value !== ''  ? parseInt(evtDay.value, 10)  : null;
-  const hourVal = evtTime.value !== '' ? parseFloat(evtTime.value) : null;
+  const hourVal = timeInputToHour(evtTime.value);
 
   const fields = {
     title,
@@ -2882,6 +2874,13 @@ function hourToTimeStr(h) {
   const hInt = Math.floor(h);
   const mInt = Math.round((h - hInt) * 60);
   return `${String(hInt).padStart(2,'0')}:${String(mInt).padStart(2,'0')}`;
+}
+
+// Convert an <input type="time"> value ("HH:MM") to a fractional hour, or null if empty.
+function timeInputToHour(str) {
+  if (!str) return null;
+  const [h, m] = str.split(':').map(Number);
+  return h + (m || 0) / 60;
 }
 
 // Build an ISO datetime by interpreting "HH:MM" as local time in the given IANA timezone.
