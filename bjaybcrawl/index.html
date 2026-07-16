@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BJAY BCRAWL</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='48' fill='%23996633'/><text x='50' y='68' font-size='56' font-family='Helvetica,Arial' font-weight='bold' fill='white' text-anchor='middle'>J</text></svg>">
+
+  <meta property="og:title" content="BJAY BCRAWL">
+  <meta property="og:description" content="Birthday local · all stops · no express service. Now arriving.">
+  <meta property="og:url" content="https://jaykudva.github.io/bjaybcrawl/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="BJAY BCRAWL">
+  <meta name="twitter:description" content="Birthday local · all stops · no express service. Now arriving.">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Doto:wght@700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="entrance">
+    <div class="entrance-inner">
+      <span class="bullet bullet-hero" aria-hidden="true">J</span>
+      <div>
+        <h1>BJAY <span class="thin">BCRAWL</span></h1>
+        <p class="entrance-sub">
+          <span class="globe" aria-hidden="true"></span>Birthday local · all stops · no express service
+        </p>
+      </div>
+    </div>
+  </header>
+  <div class="tile-band" aria-hidden="true"></div>
+
+  <main>
+    <section class="clock-board" aria-live="polite" aria-label="Service status">
+      <div class="clock-row clock-line1" id="clockLine1"></div>
+      <div class="clock-row clock-line2" id="clockLine2">…</div>
+      <div class="clock-foot" id="clockFoot"><span class="live-dot"></span><span id="clockFootText">connecting to dispatch</span></div>
+    </section>
+
+    <section class="advisory" id="advisory" hidden>
+      <div class="advisory-head">Service Advisory</div>
+      <p id="advisoryText"></p>
+    </section>
+
+    <section class="teaser" id="teaser" hidden>
+      <div class="teaser-head">Attention passengers</div>
+      <p>Station stops on the BJAY BCRAWL have not yet been announced.
+         This train is being held in the yard.<br>
+         Please stand by — and stand clear of the closing doors.</p>
+    </section>
+
+    <section class="route" id="route" aria-label="Route map" hidden>
+      <div class="route-line" aria-hidden="true"></div>
+      <p class="route-head" id="routeHead"></p>
+      <div class="train-marker hidden" id="trainMarker" aria-hidden="true">🚇</div>
+      <div id="stops"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p class="doors">Stand clear of the closing doors, please.</p>
+    <p class="fine">
+      The BJAY BCRAWL runs once per year and is not subject to MTA performance metrics.<br>
+      No refunds. Transfers to the couch available at all times. · <a href="admin.html">employees&nbsp;only</a>
+    </p>
+  </footer>
+
+  <script src="spots.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
