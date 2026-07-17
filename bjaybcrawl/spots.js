@@ -36,7 +36,7 @@ const CRAWL_STOPS = [
   {
     name: "Conor's Goat",
     neighborhood: "East Village",
-    time: "7:00 PM",
+    time: "7:45 PM",
     address: "23 Avenue A",
     mapsUrl: "https://maps.app.goo.gl/dYdsa4gSr1bwtiBV7",
     note: "cheeky lil pint for the road",
@@ -45,7 +45,7 @@ const CRAWL_STOPS = [
   {
     name: "Beto's",
     neighborhood: "Lower East Side",
-    time: "7:45 PM",
+    time: "8:30 PM",
     address: "69 Clinton St",
     mapsUrl: "https://maps.app.goo.gl/JeGd2eJafTHi7fMB6",
     note: "guisado in nyc!",
