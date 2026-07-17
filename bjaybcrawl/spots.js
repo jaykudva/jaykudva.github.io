@@ -8,7 +8,7 @@ const CRAWL_CONFIG = {
   // The real value is set from the admin page ("Departure time") and lives in
   // the database. ISO string WITH timezone offset (-04:00 = NYC summer).
   serviceBegins: "2026-07-18T18:00:00-04:00",
-  destination: "Last Call", // where the line terminates: clock shows "TO LAST CALL"
+  destination: "Rooftop Terminal",
 };
 
 // Each stop:
@@ -20,12 +20,13 @@ const CRAWL_CONFIG = {
 //   note          conductor's note — your personal pitch for the place
 //   mustOrder     recommended fare (optional)
 //   transfers     emoji rendered as transfer bullets (optional)
-//   terminus      true on the last stop — gets the big-finale styling
+//   terminus      true on the last stop — gets rooftop styling
 //   secretAddress true = address hidden until the train is en route to it
 const CRAWL_STOPS = [
   {
     name: "McSorleys",
-    time: "6:00 PM",
+    neighborhood: "East Village",
+    time: "5:00 PM",
     address: "15 E 7th Ave",
     mapsUrl: "https://maps.app.goo.gl/rT6iUs7modqnJUU87",
     note: "CASH ONLY. 1 beer = 2 beers...",
@@ -49,18 +50,20 @@ const CRAWL_STOPS = [
     address: "23 Avenue A",
     mapsUrl: "https://maps.app.goo.gl/dYdsa4gSr1bwtiBV7",
     note: "cheeky lil pint for the road",
-    mustOrder: "🍺",
+    transfers: ["🍺"],
   },
   {
     name: "Beto's",
+    neighborhood: "Lower East Side",
     time: "7:45 PM",
     address: "69 Clinton St",
     mapsUrl: "https://maps.app.goo.gl/JeGd2eJafTHi7fMB6",
     note: "guisado in nyc!",
-    mustOrder: ["🌮"],
+    transfers: ["🌮"],
   },
   {
     name: "Lai Rai",
+    neighborhood: "Chinatown",
     time: "9:30 PM",
     address: "76 Forsyth St",
     mapsUrl: "https://maps.app.goo.gl/vXQBpanzqob6CHuD9",
@@ -69,17 +72,19 @@ const CRAWL_STOPS = [
   },
   {
     name: "TIME AGAIN",
+    neighborhood: "Chinatown",
     time: "10:15 PM",
     address: "76 Forsyth St",
-    mapsUrl: "https://maps.app.goo.gl/vXQBpanzqob6CHuD9",
-    note: "ice cream stop at a wine bar... who'd a thunk",
-    transfers: ["🍨"],
+    mapsUrl: "https://maps.app.goo.gl/PWipAkRYbufC4tAa8",
+    note: "lowkey highkey play by ear situation...",
+    transfers: ["🍺"],
   },
  {
     name: "Cellar 36",
+    neighborhood: "Two Bridges",
     time: "11:00 PM",
-    address: "revealed on approach",
-    mapsUrl: "https://maps.app.goo.gl/vdBSDsoef6avJtVS9",
+    address: "36 Market St",
+    mapsUrl: "https://maps.app.goo.gl/TNwbmk5CGpTHC3KZ9",
     note: "WINE.",
     transfers: ["🍷"],
     terminus: true,
