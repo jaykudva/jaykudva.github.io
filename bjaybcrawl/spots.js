@@ -49,6 +49,7 @@ const CRAWL_STOPS = [
     address: "69 Clinton St",
     mapsUrl: "https://maps.app.goo.gl/JeGd2eJafTHi7fMB6",
     note: "guisado in nyc!",
+    mustOrder: "pollo en mole verde!",
     transfers: ["🌮"],
   },
   {
@@ -58,6 +59,7 @@ const CRAWL_STOPS = [
     address: "76 Forsyth St",
     mapsUrl: "https://maps.app.goo.gl/vXQBpanzqob6CHuD9",
     note: "ice cream stop at a wine bar... who'd a thunk",
+    mustOrder: "BANANA LEAF!",
     transfers: ["🍨"],
   },
   {
