@@ -24,16 +24,6 @@ const CRAWL_CONFIG = {
 //   secretAddress true = address hidden until the train is en route to it
 const CRAWL_STOPS = [
   {
-    name: "McSorleys",
-    neighborhood: "East Village",
-    time: "5:00 PM",
-    address: "15 E 7th Ave",
-    mapsUrl: "https://maps.app.goo.gl/rT6iUs7modqnJUU87",
-    note: "CASH ONLY. 1 beer = 2 beers...",
-    mustOrder: "1 light 1 dark per duo",
-    transfers: ["🍺"],
-  },
-  {
     name: "SAUCED",
     neighborhood: "East Village",
     time: "6:00 PM",
