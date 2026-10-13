@@ -12,7 +12,9 @@ const START_HOUR  = 0;
 const END_HOUR    = 23;
 const N_HOURS     = END_HOUR - START_HOUR + 1; // 24
 const HOURS       = Array.from({ length: N_HOURS }, (_, i) => i + START_HOUR);
-const FIXED_COL_W = 180; // px for >7 days
+const FIXED_COL_W = 180;
+// Starting duration (hours) for a new event, by category — editable per event.
+const DEFAULT_DURATION = { activity: 2, food: 1.5, drinks: 1.5, shopping: 1.5, other: 1 }; // px for >7 days
 
 const CAT_COLOR    = { food: '#f97316', activity: '#22c55e', accommodation: '#3b82f6', transport: '#a855f7', other: '#64748b' };
 const PERSON_COLORS = ['#f97316','#ec4899','#22c55e','#3b82f6','#a855f7','#eab308','#ef4444','#14b8a6','#f43f5e','#0ea5e9'];
@@ -460,6 +462,13 @@ function flightRenderInfo(f) {
   }
 }
 
+// " · from SEA Nov 5" — the departure date as it was at the departure airport
+// (not trip time, where an evening departure may already read as the next day).
+function flightFromSuffix(f) {
+  const d = new Date(f.depIso).toLocaleDateString('en-US', { timeZone: f.departure.tz || tripTz(), month: 'short', day: 'numeric' });
+  return ` · from ${f.departure.iata} ${d}`;
+}
+
 // Flight legs as virtual point-events for a given trip day, used by travel-time
 // gap detection and home-distance indicators. Hour = the moment you're at that
 // airport within the visible segment (arrival for inbound, departure for outbound).
@@ -787,9 +796,7 @@ function makeDayCol(day) {
     // range) day, so surface where/when it left from since the card alone can't show it.
     let titleText = `✈ ${f.number}`;
     if (info.clampedStart && f.departure?.iata) {
-      const depDate = getDayDate(isoToTripDayUnclamped(f.depIso));
-      const depDateStr = depDate ? depDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-      titleText += ` · from ${f.departure.iata}${depDateStr ? ' ' + depDateStr : ''}`;
+      titleText += flightFromSuffix(f);
     }
 
     fcard.innerHTML = `
@@ -1537,9 +1544,7 @@ function makeAgendaFlightRow(f, info) {
 
   let titleText = `✈ ${f.number}`;
   if (info.clampedStart && f.departure?.iata) {
-    const depDate = getDayDate(isoToTripDayUnclamped(f.depIso));
-    const depDateStr = depDate ? depDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-    titleText += ` · from ${f.departure.iata}${depDateStr ? ' ' + depDateStr : ''}`;
+    titleText += flightFromSuffix(f);
   }
   const titleRow = document.createElement('div');
   titleRow.className = 'agenda-row-title';
@@ -2258,7 +2263,19 @@ evtPlace.addEventListener('input', () => {
 // Re-check hours when day or time changes (no re-fetch needed)
 evtDay.addEventListener('change', renderPlaceInfoPanel);
 evtTime.addEventListener('change', renderPlaceInfoPanel);
-evtDuration.addEventListener('change', renderPlaceInfoPanel);
+evtDuration.addEventListener('input', renderPlaceInfoPanel);
+// A new event's duration follows its category until the user types their own.
+let durationTouched = false;
+evtDuration.addEventListener('input', () => { durationTouched = true; });
+evtCategory.addEventListener('change', () => {
+  if (editingId || durationTouched) return;
+  evtDuration.value = DEFAULT_DURATION[evtCategory.value] ?? 1;
+  renderPlaceInfoPanel();
+});
+document.getElementById('evt-time-clear').addEventListener('click', () => {
+  evtTime.value = '';
+  renderPlaceInfoPanel();
+});
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
 
@@ -2315,7 +2332,8 @@ function openModal(id = null, prefill = {}) {
     evtCategory.value      = 'food';
     evtDay.value           = prefill.day != null ? prefill.day : '';
     evtTime.value          = prefill.hour != null ? hourToTimeStr(prefill.hour) : '';
-    evtDuration.value      = 1;
+    durationTouched        = false;
+    evtDuration.value      = DEFAULT_DURATION[evtCategory.value] ?? 1;
     evtPlace.value         = '';
     evtNotes.value         = '';
     evtRes.value           = '';
@@ -2356,7 +2374,7 @@ modalSave.addEventListener('click', () => {
     title,
     category: evtCategory.value,
     day: dayVal, hour: hourVal,
-    duration: parseFloat(evtDuration.value) || 1,
+    duration: Math.min(24, Math.max(0.25, parseFloat(evtDuration.value) || 1)),
     location: currentLocationData || (editingId ? (state.events.find(e => e.id === editingId)?.location || null) : null),
     link: isGoogleMapsUrl(evtPlace.value.trim()) ? evtPlace.value.trim() : '',
     placeInfo: currentPlaceInfo || (editingId ? (state.events.find(e => e.id === editingId)?.placeInfo ?? null) : null),

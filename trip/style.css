@@ -1046,6 +1046,7 @@ body.is-dragging .travel-indicator {
 .form-group input[type="url"],
 .form-group input[type="date"],
 .form-group input[type="time"],
+.form-group input[type="number"],
 .form-group select,
 .form-group textarea {
   background: var(--surface2);
@@ -1562,3 +1563,12 @@ body.is-dragging .travel-indicator {
 }
 .day-head:hover .day-head-home { opacity: 0.7; }
 .day-head-home.is-set { opacity: 1; filter: none; }
+
+/* Start-time input with an ✕ to leave the event untimed */
+.time-clear-row { display: flex; gap: 4px; align-items: center; }
+.time-clear-row input { flex: 1; min-width: 0; }
+.time-clear-btn {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 13px; padding: 4px;
+}
+.time-clear-btn:hover { color: var(--text); }
