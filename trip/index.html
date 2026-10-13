@@ -246,6 +246,23 @@
     </div>
   </div>
 
+  <!-- ── Stays modal (all days) ── -->
+  <div id="stays-modal-overlay" class="hidden">
+    <div id="stays-modal">
+      <h3>Where you're staying</h3>
+      <p class="stays-hint">One row per night. Use ↓ to copy the row above; nights at the same address are joined on the calendar. Names are what show on the bar.</p>
+      <div id="stays-rows"></div>
+      <div id="stays-status" class="location-status"></div>
+      <div class="modal-actions">
+        <span></span>
+        <div class="modal-actions-right">
+          <button id="stays-cancel" class="btn-ghost">Cancel</button>
+          <button id="stays-save" class="btn-primary">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Home modal ── -->
   <div id="home-modal-overlay" class="hidden">
     <div id="home-modal">
@@ -257,6 +274,10 @@
             <option value="">All days (default)</option>
           </select>
         </div>
+      </div>
+      <div class="form-group">
+        <label>Name <span style="font-weight:400;opacity:.7">(shown on the calendar — rename it to something readable)</span></label>
+        <input id="home-name" type="text" placeholder="e.g. Taipei Grand Hotel" />
       </div>
       <div class="form-group">
         <label>Address</label>

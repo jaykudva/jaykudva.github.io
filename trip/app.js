@@ -102,13 +102,36 @@ function slugify(name) {
 
 // ── Home helpers ──────────────────────────────────────────────────────────────
 
-// A day's home is the most recent one set on or before it (a hotel stay carries forward).
-function getHomeForDay(day) {
-  for (let d = day; d >= 1; d--) {
-    const h = state.homeDays?.[String(d)];
-    if (h?.lat != null) return h;
+// A day's stay is only what's set on that day. `key` identifies the place (address,
+// else name) so consecutive days at the same place can be drawn as one joined bar.
+function getStayForDay(day) {
+  const h = state.homeDays?.[String(day)];
+  if (!h || !(h.lat != null || h.name || h.address)) return null;
+  const key = (h.address || h.name || '').trim().toLowerCase();
+  return { source: day, home: h, key };
+}
+
+// Pastel per distinct place, assigned in order of first appearance (so neighbours differ).
+const STAY_HUES = [345, 28, 48, 100, 160, 200, 250, 300];
+function stayColors(key) {
+  const keys = [];
+  for (let d = 1; d <= getDayCount(); d++) {
+    const k = getStayForDay(d)?.key;
+    if (k && !keys.includes(k)) keys.push(k);
   }
-  return state.home?.lat != null ? state.home : null; // old clients may still sync a global home
+  const hue = STAY_HUES[Math.max(0, keys.indexOf(key)) % STAY_HUES.length];
+  return { bg: `hsl(${hue} 62% 84%)`, fg: `hsl(${hue} 38% 24%)` };
+}
+
+// Home used for distance indicators — needs coordinates.
+function getHomeForDay(day) {
+  const home = getStayForDay(day)?.home;
+  return home?.lat != null ? home : null;
+}
+
+// Editable name first (handy when the address is in a script you can't read), else the address.
+function stayName(h) {
+  return h?.name?.trim() || h?.address?.split(',')[0]?.trim() || 'Home';
 }
 
 let state = (() => {
@@ -551,6 +574,7 @@ const btnHome          = document.getElementById('btn-home');
 const homeLabel        = document.getElementById('home-label');
 const homeModalOverlay = document.getElementById('home-modal-overlay');
 const homeAddressEl    = document.getElementById('home-address');
+const homeNameEl       = document.getElementById('home-name');
 const btnHomeLocate    = document.getElementById('btn-home-locate');
 const homeLocStatus    = document.getElementById('home-location-status');
 const homeModalClear   = document.getElementById('home-modal-clear');
@@ -687,6 +711,44 @@ function renderDays() {
   for (let d = 1; d <= n; d++) daysArea.appendChild(makeDayCol(d));
 }
 
+// Lodging pill for a day. Consecutive days at the same place (same address) are drawn
+// as one joined bar: squared-off touching ends, with the name drawn once on the first
+// day and centered across the whole run.
+function makeStayBar(day) {
+  const stay = getStayForDay(day);
+  const bar  = document.createElement('div');
+  bar.className = 'stay-bar';
+  if (!stay) {
+    bar.classList.add('empty');
+    bar.textContent = '＋ stay';
+    bar.title = 'Add where you are staying';
+    bar.addEventListener('click', () => openStaysModal(day));
+    return bar;
+  }
+  const n = getDayCount();
+  const joinsPrev = day > 1 && getStayForDay(day - 1)?.key === stay.key;
+  const joinsNext = day < n && getStayForDay(day + 1)?.key === stay.key;
+  bar.classList.toggle('join-prev', joinsPrev);
+  bar.classList.toggle('join-next', joinsNext);
+  const { bg, fg } = stayColors(stay.key);
+  bar.style.setProperty('--stay-bg', bg);
+  bar.style.setProperty('--stay-fg', fg);
+  bar.title = [stayName(stay.home), stay.home.address].filter(Boolean).join('\n') + '\n(click to edit)';
+  if (!joinsPrev) {
+    // Run length, so the label can be centered over every night of the stay.
+    let run = 1;
+    while (day + run <= n && getStayForDay(day + run)?.key === stay.key) run++;
+    const label = document.createElement('span');
+    label.className = 'stay-label';
+    label.textContent = '🏠 ' + stayName(stay.home);
+    label.style.width = `calc(${run * 100}% + ${(run - 1)}px)`;
+    bar.appendChild(label);
+    if (run > 1) bar.dataset.multi = '1';
+  }
+  bar.addEventListener('click', () => openStaysModal(day));
+  return bar;
+}
+
 // Swap a day header's title for an input; Enter/blur saves (empty resets to "Day N"), Esc cancels.
 function editDayTitle(el, day) {
   if (el.querySelector('input')) return;
@@ -739,6 +801,14 @@ function makeDayCol(day) {
   homeBtn.title       = state.homeDays?.[String(day)]?.lat != null ? 'Home changes on this day' : (getHomeForDay(day) ? 'Home carried over — click to change from this day' : 'Set home');
   homeBtn.addEventListener('click', e => { e.stopPropagation(); openHomeModal(day); });
   head.appendChild(homeBtn);
+  // Lodging row sits above the day header and sticks with it.
+  const stayCell = document.createElement('div');
+  stayCell.className = 'stay-cell';
+  const stayBar = makeStayBar(day);
+  stayCell.appendChild(stayBar);
+  // The stay label spills over the following days' cells, so lift this one above its neighbours.
+  if (stayBar.dataset.multi) stayCell.classList.add('stay-start');
+  col.appendChild(stayCell);
   col.appendChild(head);
 
   // Hour cells
@@ -2459,10 +2529,10 @@ let pendingHomeLocation = null;
 let homeSelectedDay     = 1; // day whose home is being edited
 
 function updateHomeButton() {
-  const homes = Object.values(state.homeDays || {}).filter(h => h?.lat != null);
+  const homes = Object.values(state.homeDays || {}).filter(h => h && (h.lat != null || h.name || h.address));
   btnHome.classList.toggle('is-set', homes.length > 0);
   homeLabel.textContent = homes.length === 0 ? 'Set home'
-    : homes.length === 1 ? (homes[0].address?.split(',')[0] || 'Home set')
+    : homes.length === 1 ? stayName(homes[0])
     : 'Homes (per day)';
 }
 
@@ -2488,6 +2558,7 @@ function openHomeModal(day = 1) {
     const home = state.homeDays?.[String(d)] || null;
     pendingHomeLocation = home ? { ...home } : null;
     homeAddressEl.value = home?.address || '';
+    homeNameEl.value    = home?.name || '';
     homeLocStatus.textContent = '';
     homeLocStatus.className = 'location-status';
     if (home?.lat != null) {
@@ -2503,7 +2574,94 @@ function openHomeModal(day = 1) {
   setTimeout(() => homeAddressEl.focus(), 50);
 }
 
-btnHome.addEventListener('click', () => openHomeModal(1));
+btnHome.addEventListener('click', () => openStaysModal());
+
+// ── Stays (all days at once) ──────────────────────────────────────────────────
+
+const staysOverlay = document.getElementById('stays-modal-overlay');
+const staysRows    = document.getElementById('stays-rows');
+const staysStatus  = document.getElementById('stays-status');
+const staysSave    = document.getElementById('stays-save');
+
+// One row per day: name + address/Maps link. Each day is its own entry; ↓ copies the
+// row above into this one (so a 4-night hotel is typed once). Days at the same address
+// are joined on the calendar.
+function openStaysModal(focusDay = null) {
+  staysRows.innerHTML = '';
+  staysStatus.textContent = '';
+  const n = getDayCount();
+  if (n === 0) { staysStatus.textContent = 'Set a date range first.'; }
+  for (let d = 1; d <= n; d++) {
+    const lbl = getDayLabel(d);
+    const own = state.homeDays?.[String(d)];
+    const row = document.createElement('div');
+    row.className = 'stays-row';
+    row.dataset.day = d;
+    row.innerHTML = `
+      <div class="stays-day">${escHtml(lbl.title || `Day ${lbl.num}`)}<span>${escHtml(`${lbl.dow} ${lbl.date}`)}</span></div>
+      <input class="stays-name"    type="text" placeholder="Name" />
+      <input class="stays-address" type="text" placeholder="Address or Google Maps link" />
+      <button type="button" class="stays-copy" title="Same as the day above" ${d === 1 ? 'disabled' : ''}>↓</button>
+    `;
+    const nameEl = row.querySelector('.stays-name');
+    const addrEl = row.querySelector('.stays-address');
+    nameEl.value = own?.name || '';
+    addrEl.value = own?.address || '';
+    row.dataset.origAddress = own?.address || '';
+    row.querySelector('.stays-copy').addEventListener('click', () => {
+      const above = row.previousElementSibling;
+      if (!above) return;
+      nameEl.value = above.querySelector('.stays-name').value;
+      addrEl.value = above.querySelector('.stays-address').value;
+    });
+    staysRows.appendChild(row);
+  }
+  staysOverlay.classList.remove('hidden');
+  if (focusDay != null) {
+    const row = staysRows.querySelector(`.stays-row[data-day="${focusDay}"]`);
+    row?.scrollIntoView({ block: 'center' });
+    row?.querySelector('.stays-name').focus();
+  }
+}
+
+// Coordinates for an address or Maps link, or null if it can't be resolved.
+async function locateStay(val) {
+  try {
+    if (isGoogleMapsUrl(val)) {
+      const res  = await fetch(`${API_BASE}/api/place?url=${encodeURIComponent(val)}`);
+      const data = await res.json();
+      return res.ok && data.lat != null ? { lat: data.lat, lng: data.lng } : null;
+    }
+    const r = await geocodeAddress(val);
+    return r ? { lat: r.lat, lng: r.lng } : null;
+  } catch { return null; }
+}
+
+staysSave.addEventListener('click', async () => {
+  staysSave.disabled = true;
+  staysStatus.textContent = 'Saving…';
+  const rows = [...staysRows.querySelectorAll('.stays-row')];
+  const homeDays = {};
+  await Promise.all(rows.map(async row => {
+    const d       = row.dataset.day;
+    const name    = row.querySelector('.stays-name').value.trim();
+    const address = row.querySelector('.stays-address').value.trim();
+    if (!name && !address) return;
+    const prev = state.homeDays?.[d];
+    let coords = { lat: null, lng: null };
+    if (address && address === row.dataset.origAddress && prev?.lat != null) coords = { lat: prev.lat, lng: prev.lng };
+    else if (address) coords = (await locateStay(address)) || coords;
+    homeDays[d] = { name, address, ...coords };
+  }));
+  state.homeDays = homeDays;
+  save();
+  updateHomeButton();
+  staysOverlay.classList.add('hidden');
+  staysSave.disabled = false;
+  render();
+});
+document.getElementById('stays-cancel').addEventListener('click', () => staysOverlay.classList.add('hidden'));
+staysOverlay.addEventListener('click', e => { if (e.target === staysOverlay) staysOverlay.classList.add('hidden'); });
 
 btnHomeLocate.addEventListener('click', async () => {
   btnHomeLocate.classList.add('loading');
@@ -2557,19 +2715,20 @@ btnHomeLocate.addEventListener('click', async () => {
 
 homeModalSave.addEventListener('click', () => {
   const addressText = homeAddressEl.value.trim();
+  const nameText    = homeNameEl.value.trim();
   let val = null;
   if (pendingHomeLocation) {
     val = { ...pendingHomeLocation, address: addressText || pendingHomeLocation.address };
-  } else if (addressText) {
+  } else if (addressText || nameText) {
     val = { address: addressText, lat: null, lng: null };
   }
+  if (val) val.name = nameText;
   if (!state.homeDays) state.homeDays = {};
   state.homeDays[String(homeSelectedDay)] = val;
   save();
   updateHomeButton();
   homeModalOverlay.classList.add('hidden');
-  if (activeTab === 'map') renderMap();
-  if (activeTab === 'calendar') renderTravelTimes();
+  render();
 });
 
 homeModalClear.addEventListener('click', () => {
@@ -2577,8 +2736,7 @@ homeModalClear.addEventListener('click', () => {
   save();
   updateHomeButton();
   homeModalOverlay.classList.add('hidden');
-  if (activeTab === 'map') renderMap();
-  if (activeTab === 'calendar') renderTravelTimes();
+  render();
 });
 
 homeModalCancel.addEventListener('click', () => homeModalOverlay.classList.add('hidden'));
