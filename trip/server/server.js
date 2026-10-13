@@ -400,8 +400,9 @@ app.get('/api/flight', async (req, res) => {
   if (!key) return res.status(500).json({ error: 'AERODATABOX_RAPIDAPI_KEY not set — add it to trip/server/.env' });
 
   const flightNum = number.replace(/\s+/g, '').toUpperCase();
-  // Use the "nearest day" endpoint which returns full time data (scheduledTime.local).
-  const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNum)}` +
+  // Date-specific endpoint: the undated one only returns flights near *today*, which is
+  // useless for a trip planned weeks out. Returns legs departing/arriving around that date.
+  const url = `https://aerodatabox.p.rapidapi.com/flights/number/${encodeURIComponent(flightNum)}/${encodeURIComponent(date)}` +
               `?withAircraftImage=false&withLocation=false&withFlightPlan=false`;
 
   try {
@@ -430,8 +431,11 @@ app.get('/api/flight', async (req, res) => {
       const arrLocal = aeroTime(f.arrival);
       return (depLocal && depLocal.startsWith(date)) || (arrLocal && arrLocal.startsWith(date));
     };
-    const filtered = data.filter(matchDate);
-    const results  = filtered.length > 0 ? filtered : data;
+    // Prefer legs that depart on the requested date (the same flight number also lands
+    // that day from the previous day's departure).
+    const departsOn = data.filter(f => aeroTime(f.departure)?.startsWith(date));
+    const filtered  = departsOn.length > 0 ? departsOn : data.filter(matchDate);
+    const results   = filtered.length > 0 ? filtered : data;
 
     const flights = results.map(f => {
       const depTime = aeroToIso(aeroTime(f.departure));
