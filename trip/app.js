@@ -21,7 +21,7 @@ const CAT_LABEL    = { food: 'Food & Drink', activity: 'Activity', accommodation
 // ── State ─────────────────────────────────────────────────────────────────────
 
 function defaultState() {
-  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [], people: [], homeDays: {}, destination: null };
+  return { tripName: 'My Trip', startDate: '', endDate: '', events: [], home: null, flights: [], people: [], homeDays: {}, dayTitles: {}, destination: null };
 }
 
 // Run after loading state — adds new fields and migrates legacy hardcoded people.
@@ -29,6 +29,10 @@ function migrateState() {
   if (!state.flights)  state.flights  = [];
   if (!state.people)   state.people   = [];
   if (!state.homeDays) state.homeDays = {};
+  if (!state.dayTitles) state.dayTitles = {};
+  // Homes are per-day now (carrying forward) — fold the old global home into Day 1.
+  if (state.home?.lat != null && state.homeDays['1']?.lat == null) state.homeDays['1'] = state.home;
+  state.home = null;
   if (!('destination' in state)) state.destination = null;
   delete state.groups; // no longer used
 
@@ -96,10 +100,13 @@ function slugify(name) {
 
 // ── Home helpers ──────────────────────────────────────────────────────────────
 
+// A day's home is the most recent one set on or before it (a hotel stay carries forward).
 function getHomeForDay(day) {
-  const override = state.homeDays?.[String(day)];
-  if (override?.lat != null) return override;
-  return state.home?.lat != null ? state.home : null;
+  for (let d = day; d >= 1; d--) {
+    const h = state.homeDays?.[String(d)];
+    if (h?.lat != null) return h;
+  }
+  return state.home?.lat != null ? state.home : null; // old clients may still sync a global home
 }
 
 let state = (() => {
@@ -328,9 +335,11 @@ function getDayDate(day) {
 
 function getDayLabel(day) {
   const d = getDayDate(day);
-  if (!d) return { num: day, dow: '', date: `Day ${day}` };
+  const title = state.dayTitles?.[String(day)] || '';
+  if (!d) return { num: day, title, dow: '', date: `Day ${day}` };
   return {
     num:  day,
+    title,
     dow:  d.toLocaleDateString('en-US', { weekday: 'short' }),
     date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
   };
@@ -610,8 +619,9 @@ calZoomEl.addEventListener('input', () => {
 function updateColumnWidths() {
   const n = getDayCount();
   document.querySelectorAll('.day-col').forEach(col => {
-    if (n > 7) { col.style.minWidth = FIXED_COL_W + 'px'; col.style.flex = 'none'; }
-    else        { col.style.minWidth = ''; col.style.flex = '1'; }
+    // flex:1 always, so columns stretch to fill; minWidth makes >7 days scroll instead of squish
+    col.style.flex     = '1';
+    col.style.minWidth = n > 7 ? FIXED_COL_W + 'px' : '';
   });
 }
 
@@ -668,6 +678,36 @@ function renderDays() {
   for (let d = 1; d <= n; d++) daysArea.appendChild(makeDayCol(d));
 }
 
+// Swap a day header's title for an input; Enter/blur saves (empty resets to "Day N"), Esc cancels.
+function editDayTitle(el, day) {
+  if (el.querySelector('input')) return;
+  const input = document.createElement('input');
+  input.className   = 'day-title-input';
+  input.value       = state.dayTitles?.[String(day)] || '';
+  input.placeholder = `Day ${day}`;
+  input.maxLength   = 40;
+  el.textContent = '';
+  el.appendChild(input);
+  input.focus();
+  let done = false;
+  const finish = commit => {
+    if (done) return;
+    done = true;
+    if (commit) {
+      if (!state.dayTitles) state.dayTitles = {};
+      const v = input.value.trim();
+      if (v) state.dayTitles[String(day)] = v; else delete state.dayTitles[String(day)];
+      save();
+    }
+    render();
+  };
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
 function makeDayCol(day) {
   const col = document.createElement('div');
   col.className  = 'day-col';
@@ -678,10 +718,18 @@ function makeDayCol(day) {
   head.className = 'day-head';
   const lbl = getDayLabel(day);
   head.innerHTML = `
-    <div class="day-head-num">Day ${lbl.num}</div>
+    <div class="day-head-num" title="Click to rename this day">${escHtml(lbl.title || `Day ${lbl.num}`)}</div>
     <div class="day-head-date">${lbl.date}</div>
     <div class="day-head-dow">${lbl.dow}</div>
   `;
+  head.querySelector('.day-head-num').addEventListener('click', e => editDayTitle(e.currentTarget, day));
+
+  const homeBtn = document.createElement('button');
+  homeBtn.className   = 'day-head-home' + (state.homeDays?.[String(day)]?.lat != null ? ' is-set' : '');
+  homeBtn.textContent = '🏠';
+  homeBtn.title       = state.homeDays?.[String(day)]?.lat != null ? 'Home changes on this day' : (getHomeForDay(day) ? 'Home carried over — click to change from this day' : 'Set home');
+  homeBtn.addEventListener('click', e => { e.stopPropagation(); openHomeModal(day); });
+  head.appendChild(homeBtn);
   col.appendChild(head);
 
   // Hour cells
@@ -699,12 +747,13 @@ function makeDayCol(day) {
   col.addEventListener('drop',      onDrop);
 
   // Place events — only those with a time; day+no-time appear in the unscheduled bar
-  const timedEvents = state.events.filter(e => e.day === day && e.hour != null);
-  const layout      = computeDayLayout(timedEvents);
-  timedEvents.forEach(evt => {
-    const card              = makeEventCard(evt);
-    const { col: c, cols }  = layout.get(evt.id) || { col: 0, cols: 1 };
-    positionCard(card, evt, c, cols);
+  // Events running past midnight are clipped here and continue on the next day.
+  const segments = eventSegmentsForDay(day);
+  const layout   = computeDayLayout(segments);
+  segments.forEach(seg => {
+    const card             = makeEventCard(seg.evt, seg);
+    const { col: c, cols } = layout.get(seg.id) || { col: 0, cols: 1 };
+    positionCard(card, seg.hour, seg.duration, c, cols);
     col.appendChild(card);
   });
 
@@ -756,6 +805,23 @@ function makeDayCol(day) {
   return col;
 }
 
+// Calendar segments for a day: its own timed events clipped at midnight, plus
+// the spill-over (isCont) of the previous day's events that run past 24:00.
+// Segments are {id, evt, hour, duration, isCont, spills} so they can feed computeDayLayout.
+function eventSegmentsForDay(day) {
+  const segs = [];
+  for (const evt of state.events) {
+    if (evt.hour == null) continue;
+    const end = evt.hour + (evt.duration || 1);
+    if (evt.day === day) {
+      segs.push({ id: evt.id, evt, hour: evt.hour, duration: Math.min(end, 24) - evt.hour, isCont: false, spills: end > 24 });
+    } else if (evt.day === day - 1 && end > 24) {
+      segs.push({ id: evt.id, evt, hour: 0, duration: Math.min(end - 24, 24), isCont: true, spills: false });
+    }
+  }
+  return segs;
+}
+
 // Compute side-by-side column layout for overlapping events in a day.
 // Returns Map<id, { col, cols }> where col is 0-based index and cols is total concurrent columns.
 function computeDayLayout(events) {
@@ -788,10 +854,8 @@ function computeDayLayout(events) {
   return result;
 }
 
-function positionCard(card, evt, colIdx = 0, totalCols = 1) {
-  if (evt.hour == null) return;
-  const offset = evt.hour - START_HOUR;
-  const dur    = evt.duration || 1;
+function positionCard(card, hour, dur, colIdx = 0, totalCols = 1) {
+  const offset = hour - START_HOUR;
   card.style.top    = `calc(var(--day-header-h) + ${offset} * var(--hour-height))`;
   card.style.height = `calc(${dur} * var(--hour-height) - 4px)`;
 
@@ -822,11 +886,14 @@ function repositionAllCards() {
   renderTravelTimes();
 }
 
-function makeEventCard(evt) {
+function makeEventCard(evt, seg = null) {
+  const isCont = !!seg?.isCont;
   const card = document.createElement('div');
   card.className  = `event-card cat-${evt.category}`;
-  card.draggable  = true;
-  card.dataset.id = evt.id;
+  card.draggable  = !isCont;
+  // Continuation segments are display-only: no data-id so drag/travel lookups skip them.
+  if (isCont) card.classList.add('continuation');
+  else        card.dataset.id = evt.id;
 
   if (!eventMatchesView(evt)) card.classList.add('filtered-out');
 
@@ -847,7 +914,7 @@ function makeEventCard(evt) {
   titleEl.className = 'event-card-title';
 
   const titleText = document.createElement('span');
-  titleText.textContent = evt.title;
+  titleText.textContent = isCont ? `${evt.title} (cont.)` : evt.title;
   titleEl.appendChild(titleText);
 
   // For compact cards: show pin inline in the title row, skip the meta entirely
@@ -865,7 +932,9 @@ function makeEventCard(evt) {
     if (evt.hour != null) {
       const tEl = document.createElement('span');
       tEl.className   = 'event-time-label';
-      tEl.textContent = `${formatHour(evt.hour)}–${formatHour(evt.hour + (evt.duration || 1))}`;
+      tEl.textContent = isCont
+        ? `until ${formatHour(evt.hour + (evt.duration || 1) - 24)}`
+        : `${formatHour(evt.hour)}–${formatHour(evt.hour + (evt.duration || 1))}`;
       meta.appendChild(tEl);
     }
 
@@ -927,8 +996,10 @@ function makeEventCard(evt) {
       const deltaDur = (me.clientY - startY) / hh;
       // Snap to nearest 0.5hr, minimum 0.5hr
       const newDur = Math.max(0.5, Math.round((startDur + deltaDur) * 2) / 2);
-      evt.duration = newDur;
-      card.style.height = `calc(${newDur} * var(--hour-height) - 4px)`;
+      evt.duration = Math.min(newDur, 24);
+      // Visible height stops at midnight; the remainder renders as a next-day continuation on release.
+      const visible = Math.min(evt.duration, 24 - evt.hour);
+      card.style.height = `calc(${visible} * var(--hour-height) - 4px)`;
     }
     function onUp() {
       document.body.style.cursor = '';
@@ -936,12 +1007,17 @@ function makeEventCard(evt) {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup',   onUp);
       save();
-      renderTravelTimes();
+      if (startDur + evt.hour > 24 || evt.duration + evt.hour > 24) render();
+      else renderTravelTimes();
     }
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup',   onUp);
   });
 
+  if (isCont) {
+    card.append(editBtn, titleEl, meta);
+    return card;
+  }
   card.append(editBtn, titleEl, meta, resizeHandle);
   card.addEventListener('dragstart', onDragStart);
   card.addEventListener('dragend',   onDragEnd);
@@ -1764,7 +1840,8 @@ const TILE_ATTR  = '© <a href="https://openstreetmap.org/copyright">OpenStreetM
 // Center priority: destination coords → home coords → world view.
 function defaultMapView() {
   if (state.destination?.lat != null) return { center: [state.destination.lat, state.destination.lng], zoom: 14 };
-  if (state.home?.lat != null)        return { center: [state.home.lat, state.home.lng], zoom: 14 };
+  const home1 = getHomeForDay(1);
+  if (home1)        return { center: [home1.lat, home1.lng], zoom: 14 };
   return { center: [20, 0], zoom: 2 };
 }
 
@@ -1792,7 +1869,7 @@ function renderMap() {
   mapMarkers = [];
 
   // Home marker — show per-day home if a day is filtered, else default
-  const homeForMap = mapDayFilter != null ? getHomeForDay(mapDayFilter) : state.home;
+  const homeForMap = getHomeForDay(mapDayFilter ?? 1);
   if (homeForMap?.lat != null) {
     const homeIcon = L.divIcon({
       html: '<div class="home-marker-icon">🏠</div>',
@@ -2361,37 +2438,36 @@ function escHtml(str) {
 // ── Home base ────────────────────────────────────────────────────────────────
 
 let pendingHomeLocation = null;
-let homeSelectedDay     = null; // null = default (state.home), number = per-day override
+let homeSelectedDay     = 1; // day whose home is being edited
 
 function updateHomeButton() {
-  const hasDefault = state.home?.lat != null;
-  const hasAnyDay  = Object.values(state.homeDays || {}).some(h => h?.lat != null);
-  btnHome.classList.toggle('is-set', hasDefault || hasAnyDay);
-  homeLabel.textContent = hasDefault
-    ? (state.home.address?.split(',')[0] || 'Home set')
-    : hasAnyDay ? 'Home (per day)' : 'Set home';
+  const homes = Object.values(state.homeDays || {}).filter(h => h?.lat != null);
+  btnHome.classList.toggle('is-set', homes.length > 0);
+  homeLabel.textContent = homes.length === 0 ? 'Set home'
+    : homes.length === 1 ? (homes[0].address?.split(',')[0] || 'Home set')
+    : 'Homes (per day)';
 }
 
-function openHomeModal(day = null) {
+function openHomeModal(day = 1) {
   homeSelectedDay = day;
   const daySelect = document.getElementById('home-day-select');
 
   // Populate day options
-  daySelect.innerHTML = '<option value="">All days (default)</option>';
+  daySelect.innerHTML = '';
   const n = getDayCount();
   for (let d = 1; d <= n; d++) {
     const lbl = getDayLabel(d);
     const opt = document.createElement('option');
     opt.value = d;
-    opt.textContent = `Day ${lbl.num} · ${lbl.dow} ${lbl.date}`;
+    opt.textContent = `${lbl.title ? lbl.title : `Day ${lbl.num}`} · ${lbl.dow} ${lbl.date}`;
     daySelect.appendChild(opt);
   }
-  daySelect.value = day != null ? String(day) : '';
+  daySelect.value = String(Math.min(Math.max(day || 1, 1), Math.max(n, 1)));
 
   function loadForSelectedDay() {
-    const d = daySelect.value ? parseInt(daySelect.value) : null;
+    const d = parseInt(daySelect.value) || 1;
     homeSelectedDay = d;
-    const home = d != null ? (state.homeDays?.[String(d)] || null) : (state.home || null);
+    const home = state.homeDays?.[String(d)] || null;
     pendingHomeLocation = home ? { ...home } : null;
     homeAddressEl.value = home?.address || '';
     homeLocStatus.textContent = '';
@@ -2409,7 +2485,7 @@ function openHomeModal(day = null) {
   setTimeout(() => homeAddressEl.focus(), 50);
 }
 
-btnHome.addEventListener('click', () => openHomeModal(null));
+btnHome.addEventListener('click', () => openHomeModal(1));
 
 btnHomeLocate.addEventListener('click', async () => {
   btnHomeLocate.classList.add('loading');
@@ -2469,12 +2545,8 @@ homeModalSave.addEventListener('click', () => {
   } else if (addressText) {
     val = { address: addressText, lat: null, lng: null };
   }
-  if (homeSelectedDay != null) {
-    if (!state.homeDays) state.homeDays = {};
-    state.homeDays[String(homeSelectedDay)] = val;
-  } else {
-    state.home = val;
-  }
+  if (!state.homeDays) state.homeDays = {};
+  state.homeDays[String(homeSelectedDay)] = val;
   save();
   updateHomeButton();
   homeModalOverlay.classList.add('hidden');
@@ -2483,11 +2555,7 @@ homeModalSave.addEventListener('click', () => {
 });
 
 homeModalClear.addEventListener('click', () => {
-  if (homeSelectedDay != null) {
-    if (state.homeDays) delete state.homeDays[String(homeSelectedDay)];
-  } else {
-    state.home = null;
-  }
+  if (state.homeDays) delete state.homeDays[String(homeSelectedDay)];
   save();
   updateHomeButton();
   homeModalOverlay.classList.add('hidden');
@@ -2920,6 +2988,22 @@ function buildIsoInTz(dateStr, timeStr, tz) {
   } catch { return null; }
 }
 
+// Arrival datetime for a flight: the earliest moment matching the arrival
+// wall-clock time that is after departure. The lookup API's arrival date is not
+// trusted (it can come from an unrelated day), and long-haul flights crossing the
+// date line can need +2 days from the departure date.
+function resolveArrivalIso(depIso, depDate, arrTime, arrTz) {
+  if (!depIso || !depDate || !arrTime || !arrTz) return null;
+  const depMs = new Date(depIso).getTime();
+  let arrDate = depDate;
+  for (let i = 0; i < 4; i++) {
+    const iso = buildIsoInTz(arrDate, arrTime, arrTz);
+    if (iso && new Date(iso).getTime() > depMs) return iso;
+    arrDate = addDaysToDateStr(arrDate, 1);
+  }
+  return null;
+}
+
 // Format an ISO datetime for display in trip time
 function formatIsoForDisplay(isoStr, tripTimeOnly = false) {
   if (!isoStr) return '?';
@@ -2946,15 +3030,7 @@ fltSave.addEventListener('click', () => {
   const depDate = fltDate.value;
   const depIso  = buildIsoInTz(depDate, fltDepTime.value, fltSelectedResult.departure.tz);
 
-  // Arrival date can differ from departure (overnight flights). Prefer the
-  // lookup API's arrival date if we have one; otherwise assume same-day and
-  // roll forward if that would put arrival before departure.
-  let arrDate = fltSelectedResult.arrival?.time ? fltSelectedResult.arrival.time.slice(0, 10) : depDate;
-  const tentativeArrIso = buildIsoInTz(arrDate, fltArrTime.value, fltSelectedResult.arrival.tz);
-  if (depIso && tentativeArrIso && new Date(tentativeArrIso) < new Date(depIso)) {
-    arrDate = addDaysToDateStr(arrDate, 1);
-  }
-  const arrIso = buildIsoInTz(arrDate, fltArrTime.value, fltSelectedResult.arrival.tz);
+  const arrIso = resolveArrivalIso(depIso, depDate, fltArrTime.value, fltSelectedResult.arrival.tz);
 
   if (!depIso || !arrIso) {
     fltStatus.className   = 'location-status err';

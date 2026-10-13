@@ -1523,3 +1523,42 @@ body.is-dragging .travel-indicator {
   }
   .agenda-fab:active { background: var(--accent-h); }
 }
+
+/* Midnight spill-over of an event that started on the previous day */
+.event-card.continuation {
+  border-top: 2px dashed currentColor;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  cursor: default;
+}
+
+/* Day header: editable title + per-day home */
+.day-head-num { cursor: text; max-width: 100%; padding: 0 22px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-head-num:hover { color: var(--text); }
+.day-title-input {
+  width: 100%;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: none;
+  text-align: center;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 2px;
+}
+.day-head-home {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: none;
+  border: none;
+  padding: 2px;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.3;
+  filter: grayscale(1);
+}
+.day-head:hover .day-head-home { opacity: 0.7; }
+.day-head-home.is-set { opacity: 1; filter: none; }
