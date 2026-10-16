@@ -10,7 +10,7 @@
   const w = wines.find((x) => x.slug === slug);
   if (!w) { root.innerHTML = '<div class="info"><h1>not on the shelf</h1><p class="meta"><a href="./">back to the shelf</a></p></div>'; return; }
 
-  document.title = wineTitle(w);
+  document.title = `${wineTitle(w)} · Jay's Wine Cellar`;
 
   const TINTS = ['#e8c15a', '#d9715f', '#86b86a', '#6aa8d8', '#b68ad8'];
   const fill = w.fill || 0.88; // how far up the bottle the liquid reaches
