@@ -1,0 +1,92 @@
+{
+  "wines": [
+    {
+      "slug": "marto-manna-2023",
+      "producer": "Marto",
+      "cuvee": "Manna",
+      "vintage": "2023",
+      "country": "Germany",
+      "region": "Rheinhessen",
+      "style": "light red",
+      "cellar": true,
+      "added": "2026-10-16",
+      "image": "bottles/marto-manna-2023.png",
+      "heightCm": 34,
+      "fill": 0.88,
+      "blend": [
+        { "grape": "Regent", "pct": 15, "role": "colour / body", "role_basis": "guess", "similar_to": "Merlot", "descriptor": "deep, dark-cherry, blackcurrant" },
+        { "grape": "Portugieser", "pct": 25, "role": "soft red fruit / pale colour", "role_basis": "guess", "similar_to": "Gamay", "descriptor": "light, soft, raspberry, sour cherry" },
+        { "grape": "Scheurebe", "pct": 60, "role": "aroma / acidity / grip", "role_basis": "guess", "similar_to": "Sauvignon Blanc", "descriptor": "blackcurrant leaf, grapefruit, zippy" }
+      ]
+    },
+    {
+      "slug": "matassa-brutal-orange-2024",
+      "producer": "Matassa",
+      "cuvee": "Brutal Orange",
+      "vintage": "2024",
+      "country": "France",
+      "region": "Roussillon",
+      "style": "orange",
+      "cellar": true,
+      "added": "2026-10-16",
+      "image": "bottles/matassa-brutal-orange-2024.png",
+      "heightCm": 30,
+      "fill": 0.88,
+      "blend": [
+        { "grape": "Macabeu", "pct": 100, "role": "colour / body", "similar_to": "Pinot Blanc", "descriptor": "grapefruit zest, fresh, salty" }
+      ]
+    },
+    {
+      "slug": "abracadabra-rotas-2023",
+      "producer": "Abracadabra",
+      "cuvee": "RoTAs",
+      "vintage": "2023",
+      "country": "France",
+      "region": "Ardèche",
+      "style": "light red",
+      "cellar": true,
+      "added": "2026-10-16",
+      "image": "bottles/abracadabra-rotas-2023.png",
+      "heightCm": 34,
+      "fill": 0.88,
+      "blend": [
+        { "grape": "Cinsault", "pct": 100, "similar_to": "Pinot Blanc", "descriptor": "minerals, raspberry, plum" }
+      ]
+    },
+    {
+      "slug": "robinot-concerto-2021",
+      "producer": "Robinot Domaine de l'Ange Vin",
+      "cuvee": "Concierto di Venezia",
+      "vintage": "2021",
+      "country": "France",
+      "region": "Loire Valley",
+      "style": "red",
+      "cellar": true,
+      "added": "2026-10-16",
+      "image": "bottles/robinot-concerto-2021.png",
+      "heightCm": 32,
+      "fill": 0.88,
+      "blend": [
+        { "grape": "Cabernet Franc", "pct": 90, "role": "colour / body", "descriptor": "wild strawberry" },
+        { "grape": "Pineau d'Aunis", "pct": 10, "similar_to": "Pinot Noir", "role": "spice", "descriptor": "gentle tannin, white pepper" }
+      ]
+    },
+    {
+      "slug": "robinot-lumiere-2023",
+      "producer": "Robinot Domaine de l'Ange Vin",
+      "cuvee": "Lumiere des sens",
+      "vintage": "2021",
+      "country": "France",
+      "region": "Loire Valley",
+      "style": "red",
+      "cellar": true,
+      "added": "2026-10-16",
+      "image": "bottles/robinot-lumiere-2023.png",
+      "heightCm": 32,
+      "fill": 0.88,
+      "blend": [
+        { "grape": "Pineau d'Aunis", "pct": 100, "descriptor": "white pepper, cranberry skin" }
+      ]
+    }
+  ]
+}
