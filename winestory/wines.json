@@ -12,7 +12,7 @@
       "added": "2026-10-16",
       "image": "bottles/marto-manna-2023.png",
       "heightCm": 34,
-      "fill": 0.88,
+      "fill": 0.83,
       "blend": [
         { "grape": "Regent", "pct": 15, "role": "colour / body", "role_basis": "guess", "similar_to": "Merlot", "descriptor": "deep, dark-cherry, blackcurrant" },
         { "grape": "Portugieser", "pct": 25, "role": "soft red fruit / pale colour", "role_basis": "guess", "similar_to": "Gamay", "descriptor": "light, soft, raspberry, sour cherry" },
@@ -31,7 +31,7 @@
       "added": "2026-10-16",
       "image": "bottles/matassa-brutal-orange-2024.png",
       "heightCm": 30,
-      "fill": 0.88,
+      "fill": 0.79,
       "blend": [
         { "grape": "Macabeu", "pct": 100, "role": "colour / body", "similar_to": "Pinot Blanc", "descriptor": "grapefruit zest, fresh, salty" }
       ]
@@ -48,7 +48,7 @@
       "added": "2026-10-16",
       "image": "bottles/abracadabra-rotas-2023.png",
       "heightCm": 34,
-      "fill": 0.88,
+      "fill": 0.74,
       "blend": [
         { "grape": "Cinsault", "pct": 100, "similar_to": "Pinot Blanc", "descriptor": "minerals, raspberry, plum" }
       ]
@@ -65,7 +65,7 @@
       "added": "2026-10-16",
       "image": "bottles/robinot-concerto-2021.png",
       "heightCm": 32,
-      "fill": 0.88,
+      "fill": 0.74,
       "blend": [
         { "grape": "Cabernet Franc", "pct": 90, "role": "colour / body", "descriptor": "wild strawberry" },
         { "grape": "Pineau d'Aunis", "pct": 10, "similar_to": "Pinot Noir", "role": "spice", "descriptor": "gentle tannin, white pepper" }
@@ -86,6 +86,74 @@
       "fill": 0.88,
       "blend": [
         { "grape": "Pineau d'Aunis", "pct": 100, "descriptor": "white pepper, cranberry skin" }
+      ]
+    },
+    {
+      "slug": "notre-terre-2025",
+      "producer": "Brunnhilde Claux",
+      "cuvee": "Notre Terre Rouge",
+      "vintage": "2025",
+      "country": "France",
+      "region": "tbd",
+      "style": "red",
+      "cellar": true,
+      "added": "2026-10-16",
+      "image": "bottles/notre-terre-2025.png",
+      "heightCm": 32,
+      "fill": 0.88,
+      "blend": [
+        { "grape": "tbd", "pct": 100, "descriptor": "tbd" }
+      ]
+    },
+    {
+      "slug": "beck-hartweg-tout-naturellement-macere-2025",
+      "producer": "Beck Hartweg",
+      "cuvee": "Tout Naturellement Macere",
+      "vintage": "2025",
+      "country": "France",
+      "region": "tbd",
+      "style": "orange",
+      "cellar": true,
+      "added": "2026-10-16",
+      "image": "bottles/beck-hartweg-tout-naturellement-macere-2025.png",
+      "heightCm": 34,
+      "fill": 0.88,
+      "blend": [
+        { "grape": "tbd", "pct": 100, "descriptor": "tbd" }
+      ]
+    },
+    {
+      "slug": "matassa-el-carner-rouge-2025",
+      "producer": "Matassa",
+      "cuvee": "El Carner",
+      "vintage": "2025",
+      "country": "France",
+      "region": "Roussillon",
+      "style": "red",
+      "cellar": true,
+      "added": "2026-10-16",
+      "image": "bottles/matassa-el-carner-rouge-2025.png",
+      "heightCm": 32,
+      "fill": 0.77,
+      "blend": [
+        { "grape": "tbd", "pct": 100, "descriptor": "tbd" }
+      ]
+    },
+    {
+      "slug": "la-chaussee-rouge-2025",
+      "producer": "La Grange aux Belles",
+      "cuvee": "La Chaussee Rouge",
+      "vintage": "2025",
+      "country": "France",
+      "region": "Loire Valley",
+      "style": "red",
+      "cellar": true,
+      "added": "2026-10-29",
+      "image": "bottles/la-chausse-rouge.png",
+      "heightCm": 42,
+      "fill": 0.77,
+      "blend": [
+        { "grape": "tbd", "pct": 100, "descriptor": "tbd" }
       ]
     }
   ]
